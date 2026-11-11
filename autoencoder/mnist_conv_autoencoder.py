@@ -19,7 +19,7 @@ def build_model():
     x = layers.Conv2D(8, 3, activation="relu", padding="same")(x)
     encoded = layers.MaxPooling2D(2, padding="same")(x)
 
-    # ここで表現は (4, 4, 8) になる
+    # この時点で表現の形状は (4, 4, 8)
 
     x = layers.Conv2D(8, 3, activation="relu", padding="same")(encoded)
     x = layers.UpSampling2D(2)(x)

@@ -1,6 +1,6 @@
 # Keras Examples
 
-Kerasのサンプルプログラムをまとめたリポジトリです。
+Keras のサンプルプログラムをまとめたリポジトリです。
 
 ## 動作環境
 
@@ -18,7 +18,7 @@ export KERAS_BACKEND=jax
 | スクリプト | 内容 | 既定のエポック数 |
 | --- | --- | --- |
 | `autoencoder/mnist_autoencoder.py` | 全結合1層のオートエンコーダ | 100 |
-| `autoencoder/mnist_autoencoder_l1.py` | 中間層にL1正則化をかけたオートエンコーダ | 100 |
+| `autoencoder/mnist_autoencoder_l1.py` | 中間層の出力に L1 正則化をかけたオートエンコーダ | 100 |
 | `autoencoder/mnist_deep_autoencoder.py` | 全結合3層のオートエンコーダ | 100 |
 | `autoencoder/mnist_conv_autoencoder.py` | 畳み込みオートエンコーダ | 50 |
 
@@ -35,7 +35,7 @@ export KERAS_BACKEND=jax
 
 MNIST は初回実行時に `~/.keras/datasets/` へダウンロードされます。
 
-上記以外のディレクトリのスクリプトは Keras 1 の API で書かれており、Keras 3 ではそのままでは動きません。
+上記以外のスクリプトは Keras 3 での動作を確認していません（多くは Keras 1 の API で書かれています）。
 
 ## テスト
 
