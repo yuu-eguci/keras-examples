@@ -1,70 +1,69 @@
-import numpy as np
-from keras.layers import Input, Dense
-from keras.models import Model
-from keras.datasets import mnist
-import matplotlib.pyplot as plt
+"""MNIST を全結合1層のオートエンコーダで圧縮・再構成する。
 
-# https://blog.keras.io/building-autoencoders-in-keras.html
+参考: https://blog.keras.io/building-autoencoders-in-keras.html
+"""
+import argparse
 
-if __name__ == "__main__":
-    encoding_dim = 32
+import keras
+from matplotlib.figure import Figure
 
-    # create model
-    input_img = Input(shape=(784, ))
-    encoded = Dense(encoding_dim, activation='relu')(input_img)
-    decoded = Dense(784, activation='sigmoid')(encoded)
-    autoencoder = Model(input=input_img, output=decoded)
+ENCODING_DIM = 32
 
-    # compile model
-    autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy')
 
-    # load mnist datasets
-    (X_train, _), (X_test, _) = mnist.load_data()
+def build_model():
+    input_img = keras.Input(shape=(784,))
+    encoded = keras.layers.Dense(ENCODING_DIM, activation="relu")(input_img)
+    decoded = keras.layers.Dense(784, activation="sigmoid")(encoded)
+    return keras.Model(input_img, decoded)
 
-    X_train = X_train.astype('float32') / 255.0
-    X_test = X_test.astype('float32') / 255.0
 
-    X_train = X_train.reshape((len(X_train), np.prod(X_train.shape[1:])))
-    X_test = X_test.reshape((len(X_test), np.prod(X_test.shape[1:])))
+def load_data():
+    (x_train, _), (x_test, _) = keras.datasets.mnist.load_data()
+    x_train = x_train.reshape(len(x_train), 784).astype("float32") / 255.0
+    x_test = x_test.reshape(len(x_test), 784).astype("float32") / 255.0
+    return x_train, x_test
 
-    print(X_train.shape)
-    print(X_test.shape)
 
-    # train model
-    autoencoder.fit(X_train, X_train,
-                    nb_epoch=100,
+def save_reconstructions(originals, reconstructions, path, n=10):
+    """元画像を上段、再構成画像を下段に並べて保存する。"""
+    n = min(n, len(originals))
+    fig = Figure(figsize=(2 * n, 4))
+    for i in range(n):
+        for row, images in enumerate((originals, reconstructions)):
+            ax = fig.add_subplot(2, n, row * n + i + 1)
+            ax.imshow(images[i].reshape(28, 28), cmap="gray")
+            ax.axis("off")
+    fig.savefig(path)
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--output", default="reconstruction.png")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+
+    autoencoder = build_model()
+    autoencoder.compile(optimizer="adam", loss="binary_crossentropy")
+
+    x_train, x_test = load_data()
+    autoencoder.fit(x_train, x_train,
+                    epochs=args.epochs,
                     batch_size=256,
                     shuffle=True,
-                    validation_data=(X_test, X_test))
+                    validation_data=(x_test, x_test))
 
-    # create a separate encoder model
-    encoder = Model(input=input_img, output=encoded)
-
-    # create a separate decoder model
-    encoded_input = Input(shape=(encoding_dim, ))
-    decoder_layer = autoencoder.layers[-1]
-    decoder = Model(input=encoded_input, output=decoder_layer(encoded_input))
-
-    # encode and decode some digits
-    encoded_imgs = encoder.predict(X_test)
-    decoded_imgs = decoder.predict(encoded_imgs)
-
+    # 中間層の出力を取り出すエンコーダ
+    encoder = keras.Model(autoencoder.input, autoencoder.layers[1].output)
+    encoded_imgs = encoder.predict(x_test)
     print("mean of hidden outputs: %f" % encoded_imgs.mean())
 
-    n = 10
-    plt.figure(figsize=(20, 4))
-    for i in range(n):
-        # display original
-        ax = plt.subplot(2, n, i + 1)
-        plt.imshow(X_test[i].reshape(28, 28))
-        plt.gray()
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
+    decoded_imgs = autoencoder.predict(x_test)
+    save_reconstructions(x_test, decoded_imgs, args.output)
 
-        # display reconstruction
-        ax = plt.subplot(2, n, i + 1 + n)
-        plt.imshow(decoded_imgs[i].reshape(28, 28))
-        plt.gray()
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
-    plt.show()
+
+if __name__ == "__main__":
+    main()

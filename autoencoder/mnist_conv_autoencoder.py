@@ -1,76 +1,79 @@
-import numpy as np
-from keras.layers import Input, Dense, Convolution2D, MaxPooling2D, UpSampling2D
-from keras.models import Model
-from keras.datasets import mnist
-import matplotlib.pyplot as plt
+"""畳み込みオートエンコーダで MNIST を圧縮・再構成する。
 
-# https://blog.keras.io/building-autoencoders-in-keras.html
+参考: https://blog.keras.io/building-autoencoders-in-keras.html
+"""
+import argparse
 
-if __name__ == "__main__":
-    # create model
-    # use image_dim_ordering = th (~/.keras/keras.json)
-    input_img = Input(shape=(1, 28, 28))
+import keras
+from matplotlib.figure import Figure
 
-    x = Convolution2D(16, 3, 3, activation='relu', border_mode='same')(input_img)
-    x = MaxPooling2D((2, 2), border_mode='same')(x)
-    x = Convolution2D(8, 3, 3, activation='relu', border_mode='same')(x)
-    x = MaxPooling2D((2, 2), border_mode='same')(x)
-    x = Convolution2D(8, 3, 3, activation='relu', border_mode='same')(x)
-    encoded = MaxPooling2D((2, 2), border_mode='same')(x)
 
-    # at this point the representation is (8, 4, 4)
+def build_model():
+    layers = keras.layers
+    input_img = keras.Input(shape=(28, 28, 1))
 
-    x = Convolution2D(8, 3, 3, activation='relu', border_mode='same')(encoded)
-    x = UpSampling2D((2, 2))(x)
-    x = Convolution2D(8, 3, 3, activation='relu', border_mode='same')(x)
-    x = UpSampling2D((2, 2))(x)
-    x = Convolution2D(16, 3, 3, activation='relu')(x)
-    x = UpSampling2D((2, 2))(x)
-    decoded = Convolution2D(1, 3, 3, activation='sigmoid', border_mode='same')(x)
+    x = layers.Conv2D(16, 3, activation="relu", padding="same")(input_img)
+    x = layers.MaxPooling2D(2, padding="same")(x)
+    x = layers.Conv2D(8, 3, activation="relu", padding="same")(x)
+    x = layers.MaxPooling2D(2, padding="same")(x)
+    x = layers.Conv2D(8, 3, activation="relu", padding="same")(x)
+    encoded = layers.MaxPooling2D(2, padding="same")(x)
 
-    autoencoder = Model(input_img, decoded)
-    from keras.utils.visualize_util import plot
-    plot(autoencoder, to_file='architecture.png', show_shapes=True)
-    
-    # compile model
-    autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy')
+    # ここで表現は (4, 4, 8) になる
 
-    # load mnist datasets
-    (X_train, _), (X_test, _) = mnist.load_data()
+    x = layers.Conv2D(8, 3, activation="relu", padding="same")(encoded)
+    x = layers.UpSampling2D(2)(x)
+    x = layers.Conv2D(8, 3, activation="relu", padding="same")(x)
+    x = layers.UpSampling2D(2)(x)
+    # padding なしで 16x16 を 14x14 に縮め、次のアップサンプリングで 28x28 に戻す
+    x = layers.Conv2D(16, 3, activation="relu")(x)
+    x = layers.UpSampling2D(2)(x)
+    decoded = layers.Conv2D(1, 3, activation="sigmoid", padding="same")(x)
+    return keras.Model(input_img, decoded)
 
-    X_train = X_train.astype('float32') / 255.0
-    X_test = X_test.astype('float32') / 255.0
 
-    X_train = np.reshape(X_train, (len(X_train), 1, 28, 28))
-    X_test = np.reshape(X_test, (len(X_test), 1, 28, 28))
+def load_data():
+    (x_train, _), (x_test, _) = keras.datasets.mnist.load_data()
+    x_train = x_train.reshape(len(x_train), 28, 28, 1).astype("float32") / 255.0
+    x_test = x_test.reshape(len(x_test), 28, 28, 1).astype("float32") / 255.0
+    return x_train, x_test
 
-    print(X_train.shape)
-    print(X_test.shape)
 
-    # train model
-    autoencoder.fit(X_train, X_train,
-                    nb_epoch=50,
+def save_reconstructions(originals, reconstructions, path, n=10):
+    """元画像を上段、再構成画像を下段に並べて保存する。"""
+    n = min(n, len(originals))
+    fig = Figure(figsize=(2 * n, 4))
+    for i in range(n):
+        for row, images in enumerate((originals, reconstructions)):
+            ax = fig.add_subplot(2, n, row * n + i + 1)
+            ax.imshow(images[i].reshape(28, 28), cmap="gray")
+            ax.axis("off")
+    fig.savefig(path)
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--output", default="reconstruction.png")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+
+    autoencoder = build_model()
+    autoencoder.compile(optimizer="adam", loss="binary_crossentropy")
+
+    x_train, x_test = load_data()
+    autoencoder.fit(x_train, x_train,
+                    epochs=args.epochs,
                     batch_size=128,
                     shuffle=True,
-                    validation_data=(X_test, X_test))
+                    validation_data=(x_test, x_test))
 
-    # encode and decode some digits
-    decoded_imgs = autoencoder.predict(X_test)
+    decoded_imgs = autoencoder.predict(x_test)
+    save_reconstructions(x_test, decoded_imgs, args.output)
 
-    n = 10
-    plt.figure(figsize=(20, 4))
-    for i in range(n):
-        # display original
-        ax = plt.subplot(2, n, i + 1)
-        plt.imshow(X_test[i].reshape(28, 28))
-        plt.gray()
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
 
-        # display reconstruction
-        ax = plt.subplot(2, n, i + 1 + n)
-        plt.imshow(decoded_imgs[i].reshape(28, 28))
-        plt.gray()
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
-    plt.show()
+if __name__ == "__main__":
+    main()
