@@ -1,29 +1,38 @@
+"""cifar10.py で学習したモデルの1層目の畳み込みフィルタを画像として保存する。"""
+import argparse
 import os
-import json
-import matplotlib.pyplot as plt
-from keras.models import model_from_json
+
+import keras
+from matplotlib.figure import Figure
 
 
-if __name__ == '__main__':
-    model_file = os.path.join('result', 'model.json')
-    weight_file = os.path.join('result', 'model.h5')
+def save_filters(model, path):
+    """1層目の畳み込みフィルタを、フィルタごとに 0〜1 に正規化した RGB 画像で並べて保存する。"""
+    conv = next(layer for layer in model.layers if isinstance(layer, keras.layers.Conv2D))
+    # 重みの形状は (縦, 横, 入力チャネル, フィルタ数)
+    weights = conv.get_weights()[0]
+    fig = Figure()
+    for i in range(weights.shape[3]):
+        w = weights[:, :, :, i]
+        ax = fig.add_subplot(4, 8, i + 1)
+        ax.imshow((w - w.min()) / (w.max() - w.min()))
+        ax.axis("off")
+    fig.savefig(path)
 
-    with open(model_file, 'r') as fp:
-        model = model_from_json(fp.read())
-    model.load_weights(weight_file)
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--result-dir", default="result",
+                        help="model.keras があり、filters.png を保存するディレクトリ")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    model = keras.models.load_model(os.path.join(args.result_dir, "model.keras"))
     model.summary()
+    save_filters(model, os.path.join(args.result_dir, "filters.png"))
 
-    W = model.layers[0].get_weights()[0]
-    W = W.transpose(3, 2, 0, 1)
-    print(W.shape)
 
-    nb_filter, nb_channel, nb_row, nb_col = W.shape
-
-    plt.figure()
-    for i in range(nb_filter):
-        im = W[i]
-
-        plt.subplot(4, 8, i + 1)
-        plt.axis('off')
-        plt.imshow(im)
-    plt.show()
+if __name__ == "__main__":
+    main()

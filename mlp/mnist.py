@@ -1,111 +1,90 @@
-import numpy as np
-import matplotlib.pyplot as plt
+"""MNIST の数字を多層パーセプトロンで分類する。
 
-from keras.datasets import mnist
-from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation
-from keras.optimizers import Adam
-from keras.callbacks import EarlyStopping
-from keras.utils import np_utils
-from keras.utils.visualize_util import plot
+参考: https://github.com/keras-team/keras/blob/2.3.1/examples/mnist_mlp.py
+"""
+import argparse
+import os
 
-# MNISTの数字分類
-# 参考
-# https://github.com/fchollet/keras/blob/master/examples/mnist_mlp.py
+import keras
+from matplotlib.figure import Figure
 
 
-def build_multilayer_perceptron():
-    model = Sequential()
-
-    model.add(Dense(512, input_shape=(784,)))
-    model.add(Activation('relu'))
-    model.add(Dropout(0.2))
-    model.add(Dense(512))
-    model.add(Activation('relu'))
-    model.add(Dropout(0.2))
-    model.add(Dense(10))
-    model.add(Activation('softmax'))
-
-    return model
+def build_model():
+    layers = keras.layers
+    return keras.Sequential([
+        keras.Input(shape=(784,)),
+        layers.Dense(512, activation="relu"),
+        layers.Dropout(0.2),
+        layers.Dense(512, activation="relu"),
+        layers.Dropout(0.2),
+        layers.Dense(10, activation="softmax"),
+    ])
 
 
-def plot_history(history):
-    # print(history.history.keys())
+def load_data():
+    (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+    # 画像を1次元配列にし、画素値を 0.0〜1.0 に変換
+    x_train = x_train.reshape(len(x_train), 784).astype("float32") / 255.0
+    x_test = x_test.reshape(len(x_test), 784).astype("float32") / 255.0
+    return (x_train, y_train), (x_test, y_test)
 
-    # 精度の履歴をプロット
-    plt.plot(history.history['acc'], marker='.')
-    plt.plot(history.history['val_acc'], marker='.')
-    plt.title('model accuracy')
-    plt.xlabel('epoch')
-    plt.ylabel('accuracy')
-    plt.grid()
-    plt.legend(['acc', 'val_acc'], loc='lower right')
-    plt.show()
 
-    # 損失の履歴をプロット
-    plt.plot(history.history['loss'], marker='.')
-    plt.plot(history.history['val_loss'], marker='.')
-    plt.title('model loss')
-    plt.xlabel('epoch')
-    plt.ylabel('loss')
-    plt.grid()
-    plt.legend(['loss', 'val_loss'], loc='lower right')
-    plt.show()
+def save_history(history, result_dir):
+    h = history.history
+    with open(os.path.join(result_dir, "history.txt"), "w") as fp:
+        fp.write("epoch\tloss\tacc\tval_loss\tval_acc\n")
+        for i in range(len(h["loss"])):
+            fp.write("%d\t%f\t%f\t%f\t%f\n" % (
+                i, h["loss"][i], h["accuracy"][i], h["val_loss"][i], h["val_accuracy"][i]))
+
+
+def plot_history(history, result_dir):
+    """精度と損失の学習曲線を acc.png / loss.png に保存する。"""
+    for metric, filename in (("accuracy", "acc.png"), ("loss", "loss.png")):
+        fig = Figure()
+        ax = fig.add_subplot()
+        ax.plot(history.history[metric], marker=".", label="train")
+        ax.plot(history.history["val_" + metric], marker=".", label="validation")
+        ax.set_title("model " + metric)
+        ax.set_xlabel("epoch")
+        ax.set_ylabel(metric)
+        ax.grid()
+        ax.legend()
+        fig.savefig(os.path.join(result_dir, filename))
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--result-dir", default="result")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    os.makedirs(args.result_dir, exist_ok=True)
+
+    (x_train, y_train), (x_test, y_test) = load_data()
+
+    model = build_model()
+    model.summary()
+    model.compile(loss="sparse_categorical_crossentropy",
+                  optimizer="adam",
+                  metrics=["accuracy"])
+
+    history = model.fit(x_train, y_train,
+                        batch_size=128,
+                        epochs=args.epochs,
+                        validation_split=0.1,
+                        callbacks=[keras.callbacks.EarlyStopping(verbose=1)])
+
+    save_history(history, args.result_dir)
+    plot_history(history, args.result_dir)
+
+    loss, acc = model.evaluate(x_test, y_test, verbose=0)
+    print("Test loss:", loss)
+    print("Test acc:", acc)
 
 
 if __name__ == "__main__":
-    batch_size = 128
-    nb_classes = 10
-    nb_epoch = 100
-
-    # MNISTデータのロード
-    (X_train, y_train), (X_test, y_test) = mnist.load_data()
-
-    # 画像を1次元配列化
-    X_train = X_train.reshape(60000, 784)
-    X_test = X_test.reshape(10000, 784)
-
-    # 画素を0.0-1.0の範囲に変換
-    X_train = X_train.astype('float32')
-    X_test = X_test.astype('float32')
-    X_train /= 255
-    X_test /= 255
-
-    print(X_train.shape[0], 'train samples')
-    print(X_test.shape[0], 'test samples')
-
-    # one-hot-encoding
-    Y_train = np_utils.to_categorical(y_train, nb_classes)
-    Y_test = np_utils.to_categorical(y_test, nb_classes)
-
-    # 多層ニューラルネットワークモデルを構築
-    model = build_multilayer_perceptron()
-
-    # モデルのサマリを表示
-    model.summary()
-    plot(model, show_shapes=True, show_layer_names=True, to_file='model.png')
-
-    # モデルをコンパイル
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=Adam(),
-                  metrics=['accuracy'])
-
-    # Early-stopping
-    early_stopping = EarlyStopping(patience=0, verbose=1)
-
-    # モデルの訓練
-    history = model.fit(X_train, Y_train,
-                        batch_size=batch_size,
-                        nb_epoch=nb_epoch,
-                        verbose=1,
-                        validation_split=0.1,
-                        callbacks=[early_stopping])
-
-    # 学習履歴をプロット
-    plot_history(history)
-
-    # モデルの評価
-    loss, acc = model.evaluate(X_test, Y_test, verbose=0)
-
-    print('Test loss:', loss)
-    print('Test acc:', acc)
+    main()

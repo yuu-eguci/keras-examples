@@ -34,3 +34,18 @@ def fake_mnist(monkeypatch):
         return (x_train, y_train), (x_test, y_test)
 
     monkeypatch.setattr(keras.datasets.mnist, "load_data", load_data)
+
+
+@pytest.fixture
+def fake_cifar10(monkeypatch):
+    """CIFAR-10 のダウンロードの代わりに、同じ形式の極小データを返す。"""
+    rng = np.random.default_rng(0)
+
+    def load_data():
+        x_train = rng.integers(0, 256, size=(32, 32, 32, 3), dtype=np.uint8)
+        y_train = rng.integers(0, 10, size=(32, 1), dtype=np.uint8)
+        x_test = rng.integers(0, 256, size=(16, 32, 32, 3), dtype=np.uint8)
+        y_test = rng.integers(0, 10, size=(16, 1), dtype=np.uint8)
+        return (x_train, y_train), (x_test, y_test)
+
+    monkeypatch.setattr(keras.datasets.cifar10, "load_data", load_data)

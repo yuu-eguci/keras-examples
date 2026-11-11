@@ -1,176 +1,118 @@
+"""CIFAR-10 の画像を畳み込みニューラルネットワークで分類する。"""
+import argparse
 import os
-import sys
+
+import keras
 import numpy as np
-from scipy.misc import toimage
-import matplotlib.pyplot as plt
-
-from keras.datasets import cifar10
-from keras.models import Sequential
-from keras.layers import Dense, Dropout, Activation, Flatten
-from keras.layers import Convolution2D, MaxPooling2D
-from keras.utils import np_utils
-from keras.utils.visualize_util import plot
-from keras.preprocessing.image import ImageDataGenerator
+from matplotlib.figure import Figure
 
 
-def plot_cifar10(X, y, result_dir):
-    plt.figure()
+def build_model(augment=False):
+    layers = keras.layers
+    model = keras.Sequential([keras.Input(shape=(32, 32, 3))])
+    if augment:
+        # 学習時だけ画像を縦横ランダムに最大10%平行移動し、空いた部分は端の画素で埋める
+        # （推論時は何もしない）
+        model.add(layers.RandomTranslation(0.1, 0.1, fill_mode="nearest"))
+    for layer in [
+        layers.Conv2D(32, 3, padding="same", activation="relu"),
+        layers.Conv2D(32, 3, activation="relu"),
+        layers.MaxPooling2D(2),
+        layers.Dropout(0.25),
+        layers.Conv2D(64, 3, padding="same", activation="relu"),
+        layers.Conv2D(64, 3, activation="relu"),
+        layers.MaxPooling2D(2),
+        layers.Dropout(0.25),
+        layers.Flatten(),
+        layers.Dense(512, activation="relu"),
+        layers.Dropout(0.5),
+        layers.Dense(10, activation="softmax"),
+    ]:
+        model.add(layer)
+    return model
 
-    # 画像を描画
-    nclasses = 10
-    pos = 1
-    for targetClass in range(nclasses):
-        targetIdx = []
-        # クラスclassIDの画像のインデックスリストを取得
-        for i in range(len(y)):
-            if y[i][0] == targetClass:
-                targetIdx.append(i)
 
-        # 各クラスからランダムに選んだ最初の10個の画像を描画
-        np.random.shuffle(targetIdx)
-        for idx in targetIdx[:10]:
-            img = toimage(X[idx])
-            plt.subplot(10, 10, pos)
-            plt.imshow(img)
-            plt.axis('off')
-            pos += 1
-
-    plt.savefig(os.path.join(result_dir, 'plot.png'))
+def plot_cifar10(x, y, path):
+    """クラスごとに訓練画像を最大10枚ずつランダムに選び、1クラス1行で並べて保存する。"""
+    rng = np.random.default_rng()
+    fig = Figure(figsize=(10, 10))
+    for target_class in range(10):
+        indices = np.flatnonzero(y.ravel() == target_class)
+        for i, idx in enumerate(rng.permutation(indices)[:10]):
+            ax = fig.add_subplot(10, 10, target_class * 10 + i + 1)
+            ax.imshow(x[idx])
+            ax.axis("off")
+    fig.savefig(path)
 
 
-def save_history(history, result_file):
-    loss = history.history['loss']
-    acc = history.history['acc']
-    val_loss = history.history['val_loss']
-    val_acc = history.history['val_acc']
-    nb_epoch = len(acc)
-
-    with open(result_file, "w") as fp:
+def save_history(history, result_dir):
+    h = history.history
+    with open(os.path.join(result_dir, "history.txt"), "w") as fp:
         fp.write("epoch\tloss\tacc\tval_loss\tval_acc\n")
-        for i in range(nb_epoch):
-            fp.write("%d\t%f\t%f\t%f\t%f\n" % (i, loss[i], acc[i], val_loss[i], val_acc[i]))
+        for i in range(len(h["loss"])):
+            fp.write("%d\t%f\t%f\t%f\t%f\n" % (
+                i, h["loss"][i], h["accuracy"][i], h["val_loss"][i], h["val_accuracy"][i]))
 
 
-if __name__ == '__main__':
-    if len(sys.argv) != 4:
-        print("usage: python cifar10.py [nb_epoch] [use_data_augmentation (True or False)] [result_dir]")
-        exit(1)
+def plot_history(history, result_dir):
+    """精度と損失の学習曲線を acc.png / loss.png に保存する。"""
+    for metric, filename in (("accuracy", "acc.png"), ("loss", "loss.png")):
+        fig = Figure()
+        ax = fig.add_subplot()
+        ax.plot(history.history[metric], marker=".", label="train")
+        ax.plot(history.history["val_" + metric], marker=".", label="validation")
+        ax.set_title("model " + metric)
+        ax.set_xlabel("epoch")
+        ax.set_ylabel(metric)
+        ax.grid()
+        ax.legend()
+        fig.savefig(os.path.join(result_dir, filename))
 
-    nb_epoch = int(sys.argv[1])
-    data_augmentation = True if sys.argv[2] == "True" else False
-    result_dir = sys.argv[3]
-    if not os.path.exists(result_dir):
-        os.mkdir(result_dir)
 
-    print("nb_epoch:", nb_epoch)
-    print("data_augmentation:", data_augmentation)
-    print("result_dir:", result_dir)
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--result-dir", default="result")
+    parser.add_argument("--augment", action="store_true",
+                        help="学習時に画像をランダムに平行移動してデータを拡張する")
+    return parser.parse_args(argv)
 
-    batch_size = 128
-    nb_classes = 10
 
-    # 入力画像の次元
-    img_rows, img_cols = 32, 32
+def main(argv=None):
+    args = parse_args(argv)
+    os.makedirs(args.result_dir, exist_ok=True)
+    print("epochs:", args.epochs)
+    print("augment:", args.augment)
+    print("result_dir:", args.result_dir)
 
-    # チャネル数（RGBなので3）
-    img_channels = 3
+    (x_train, y_train), (x_test, y_test) = keras.datasets.cifar10.load_data()
+    plot_cifar10(x_train, y_train, os.path.join(args.result_dir, "plot.png"))
 
-    # CIFAR-10データをロード
-    # (nb_samples, nb_rows, nb_cols, nb_channel) = tf
-    (X_train, y_train), (X_test, y_test) = cifar10.load_data()
+    # 画素値を 0.0〜1.0 に変換
+    x_train = x_train.astype("float32") / 255.0
+    x_test = x_test.astype("float32") / 255.0
 
-    # ランダムに画像をプロット
-    plot_cifar10(X_train, y_train, result_dir)
-
-    # 画素値を0-1に変換
-    X_train = X_train.astype('float32')
-    X_test = X_test.astype('float32')
-    X_train /= 255.0
-    X_test /= 255.0
-
-    # クラスラベル（0-9）をone-hotエンコーディング形式に変換
-    Y_train = np_utils.to_categorical(y_train, nb_classes)
-    Y_test = np_utils.to_categorical(y_test, nb_classes)
-
-    # CNNを構築
-    model = Sequential()
-
-    model.add(Convolution2D(32, 3, 3, border_mode='same', input_shape=X_train.shape[1:]))
-    model.add(Activation('relu'))
-    model.add(Convolution2D(32, 3, 3))
-    model.add(Activation('relu'))
-    model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Dropout(0.25))
-
-    model.add(Convolution2D(64, 3, 3, border_mode='same'))
-    model.add(Activation('relu'))
-    model.add(Convolution2D(64, 3, 3))
-    model.add(Activation('relu'))
-    model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Dropout(0.25))
-
-    model.add(Flatten())
-    model.add(Dense(512))
-    model.add(Activation('relu'))
-    model.add(Dropout(0.5))
-
-    model.add(Dense(nb_classes))
-    model.add(Activation('softmax'))
-
-    model.compile(loss='categorical_crossentropy',
-                  optimizer='adam',
-                  metrics=['accuracy'])
-
-    # モデルのサマリを表示
+    model = build_model(augment=args.augment)
     model.summary()
-    plot(model, show_shapes=True, to_file=os.path.join(result_dir, 'model.png'))
+    model.compile(loss="sparse_categorical_crossentropy",
+                  optimizer="adam",
+                  metrics=["accuracy"])
 
-    # 訓練
-    if not data_augmentation:
-        print('Not using data augmentation')
-        history = model.fit(X_train, Y_train,
-                            batch_size=batch_size,
-                            nb_epoch=nb_epoch,
-                            verbose=1,
-                            validation_data=(X_test, Y_test),
-                            shuffle=True)
-    else:
-        print('Using real-time data augmentation')
+    # 本来は好ましくないが、テストデータを検証データとして使う
+    history = model.fit(x_train, y_train,
+                        batch_size=128,
+                        epochs=args.epochs,
+                        validation_data=(x_test, y_test),
+                        shuffle=True)
 
-        # 訓練データを生成するジェネレータ
-        train_datagen = ImageDataGenerator(zca_whitening=True, width_shift_range=0.1, height_shift_range=0.1)
-        train_datagen.fit(X_train)
-        train_generator = train_datagen.flow(X_train, Y_train, batch_size=batch_size)
+    model.save(os.path.join(args.result_dir, "model.keras"))
+    save_history(history, args.result_dir)
+    plot_history(history, args.result_dir)
 
-        # テストデータを生成するジェネレータ
-        # 画像のランダムシフトは必要ない？
-        test_datagen = ImageDataGenerator(zca_whitening=True)
-        test_datagen.fit(X_test)
-        test_generator = test_datagen.flow(X_test, Y_test)
+    loss, acc = model.evaluate(x_test, y_test, verbose=0)
+    print("Test loss:", loss)
+    print("Test acc:", acc)
 
-        # ジェネレータから生成される画像を使って学習
-        # 本来は好ましくないがテストデータをバリデーションデータとして使う
-        # validation_dataにジェネレータを使うときはnb_val_samplesを指定する必要あり
-        # TODO: 毎エポックで生成するのは無駄か？
-        history = model.fit_generator(train_generator,
-                                      samples_per_epoch=X_train.shape[0],
-                                      nb_epoch=nb_epoch,
-                                      validation_data=test_generator,
-                                      nb_val_samples=X_test.shape[0])
 
-    # 学習したモデルと重みと履歴の保存
-    model_json = model.to_json()
-    with open(os.path.join(result_dir, 'model.json'), 'w') as json_file:
-        json_file.write(model_json)
-    model.save_weights(os.path.join(result_dir, 'model.h5'))
-    save_history(history, os.path.join(result_dir, 'history.txt'))
-
-    # モデルの評価
-    # 学習は白色化した画像を使ったので評価でも白色化したデータで評価する
-    if not data_augmentation:
-        loss, acc = model.evaluate(X_test, Y_test, verbose=0)
-    else:
-        loss, acc = model.evaluate_generator(test_generator, val_samples=X_test.shape[0])
-
-    print('Test loss:', loss)
-    print('Test acc:', acc)
+if __name__ == "__main__":
+    main()
