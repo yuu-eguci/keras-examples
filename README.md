@@ -17,9 +17,9 @@ export KERAS_BACKEND=jax
 
 | スクリプト | 内容 | 既定のエポック数 |
 | --- | --- | --- |
-| `autoencoder/mnist_autoencoder.py` | 全結合1層のオートエンコーダ | 100 |
+| `autoencoder/mnist_autoencoder.py` | 隠れ層1層の全結合オートエンコーダ | 100 |
 | `autoencoder/mnist_autoencoder_l1.py` | 中間層の出力に L1 正則化をかけたオートエンコーダ | 100 |
-| `autoencoder/mnist_deep_autoencoder.py` | 全結合3層のオートエンコーダ | 100 |
+| `autoencoder/mnist_deep_autoencoder.py` | エンコーダ・デコーダが各3層の全結合オートエンコーダ | 100 |
 | `autoencoder/mnist_conv_autoencoder.py` | 畳み込みオートエンコーダ | 50 |
 
 どのスクリプトも MNIST を使い、テスト画像10枚の元画像（上段）と再構成画像（下段）を PNG に保存します。

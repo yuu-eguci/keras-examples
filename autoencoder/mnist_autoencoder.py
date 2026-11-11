@@ -1,4 +1,4 @@
-"""MNIST を全結合1層のオートエンコーダで圧縮・再構成する。
+"""MNIST を隠れ層1層の全結合オートエンコーダで圧縮・再構成する。
 
 参考: https://blog.keras.io/building-autoencoders-in-keras.html
 """

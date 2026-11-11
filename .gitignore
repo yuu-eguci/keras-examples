@@ -1,4 +1,5 @@
 .venv/
+reconstruction.png
 *.h5
 *.json
 *.tgz
