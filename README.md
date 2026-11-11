@@ -92,10 +92,10 @@ export KERAS_BACKEND=jax
 | --- | --- | --- |
 | `vae/mnist_vae.py` | `latent.png` | テスト画像を潜在空間に写した散布図（色は数字のラベル） |
 | `vae/mnist_vae.py` | `manifold.png` | 潜在空間の格子点15×15から生成した数字の一覧 |
-| `gan/dcgan_mnist.py` | `<エポック>_<バッチ>.png` | 500バッチごとに Generator が生成した画像の一覧（例: `0000_0000.png`） |
+| `gan/dcgan_mnist.py` | `<エポック>_<バッチ>.png` | 各エポックの0, 500, 1000, …バッチ目で Generator が生成した画像の一覧（例: `0000_0500.png`） |
 | `gan/dcgan_mnist.py` | `generator.weights.h5` / `discriminator.weights.h5` | 学習後の Generator と Discriminator の重み |
 
-DCGAN は1バッチごとに Discriminator と Generator を交互に更新します。Discriminator の更新では Discriminator の重みだけを、Generator の更新では Generator の重みだけを更新します。
+DCGAN は1バッチごとに Discriminator と Generator を交互に更新します。Discriminator を学習するときは Discriminator の重みだけを、Generator を学習するときは Generator の重みだけを更新します。
 
 ### そのほか
 

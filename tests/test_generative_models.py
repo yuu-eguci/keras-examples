@@ -38,8 +38,21 @@ def test_vae_adds_kl_divergence_to_loss():
 
     vae(np.random.default_rng(0).random((4, 784), dtype=np.float32))
 
-    (kl,) = vae.losses
-    assert float(kl) >= 0.0
+    assert len(vae.losses) == 1
+
+
+def test_sampling_adds_batch_mean_of_kl_divergence():
+    module = load_example("vae/mnist_vae.py")
+    z_mean = np.array([[0.0, 0.0], [1.0, -2.0]], dtype=np.float32)
+    z_log_var = np.array([[0.0, 0.0], [0.5, -1.0]], dtype=np.float32)
+    sampling = module.Sampling(module.EPSILON_STD)
+
+    sampling([z_mean, z_log_var])
+
+    expected = np.mean(-0.5 * np.sum(
+        1 + z_log_var - z_mean ** 2 - np.exp(z_log_var), axis=-1))
+    (kl,) = sampling.losses
+    np.testing.assert_allclose(float(kl), expected, rtol=1e-5)
 
 
 def test_vae_main_saves_latent_space_plots(fake_mnist, tmp_path):
