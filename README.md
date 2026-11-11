@@ -75,6 +75,28 @@ export KERAS_BACKEND=jax
 | `--epochs` | 学習エポック数 |
 | `--output` | 再構成画像の保存先（既定は `reconstruction.png`） |
 
+### 生成モデル
+
+| スクリプト | 内容 | 既定のエポック数 |
+| --- | --- | --- |
+| `vae/mnist_vae.py` | 潜在空間が2次元の変分オートエンコーダ（VAE） | 50 |
+| `gan/dcgan_mnist.py` | 手書き数字を生成する DCGAN | 20 |
+
+```bash
+.venv/bin/python gan/dcgan_mnist.py --epochs 1 --result-dir result_gan
+```
+
+どちらも MNIST を使い、`--epochs`（学習エポック数）と `--result-dir`（結果の保存先ディレクトリ。既定は実行したディレクトリの `result`。なければ作成）を指定できます。
+
+| スクリプト | ファイル | 内容 |
+| --- | --- | --- |
+| `vae/mnist_vae.py` | `latent.png` | テスト画像を潜在空間に写した散布図（色は数字のラベル） |
+| `vae/mnist_vae.py` | `manifold.png` | 潜在空間の格子点15×15から生成した数字の一覧 |
+| `gan/dcgan_mnist.py` | `<エポック>_<バッチ>.png` | 各エポックの0, 500, 1000, …バッチ目で Generator が生成した画像の一覧（例: `0000_0500.png`） |
+| `gan/dcgan_mnist.py` | `generator.weights.h5` / `discriminator.weights.h5` | 学習後の Generator と Discriminator の重み |
+
+DCGAN は1バッチごとに Discriminator と Generator を交互に更新します。Discriminator を学習するときは Discriminator の重みだけを、Generator を学習するときは Generator の重みだけを更新します。
+
 ### そのほか
 
 上記以外のスクリプトは Keras 3 での動作を確認していません（多くは Keras 1 の API で書かれています）。

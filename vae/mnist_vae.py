@@ -1,97 +1,122 @@
+"""潜在空間が2次元の変分オートエンコーダ（VAE）で MNIST を学習する。
+
+参考:
+- https://blog.keras.io/building-autoencoders-in-keras.html
+- https://github.com/keras-team/keras/blob/2.3.1/examples/variational_autoencoder.py
+"""
+import argparse
+import os
+
+import keras
 import numpy as np
-import matplotlib.pyplot as plt
+from keras import ops
+from matplotlib.figure import Figure
 
-from keras.layers import Input, Dense, Lambda
-from keras.models import Model
-from keras import backend as K
-from keras import objectives
-from keras.datasets import mnist
+BATCH_SIZE = 100
+ORIGINAL_DIM = 784
+LATENT_DIM = 2
+INTERMEDIATE_DIM = 256
+EPSILON_STD = 0.01
 
-# https://blog.keras.io/building-autoencoders-in-keras.html
-# https://github.com/fchollet/keras/blob/master/examples/variational_autoencoder.py
 
-batch_size = 100
-original_dim = 784
-latent_dim = 2
-intermediate_dim = 256
-nb_epoch = 50
-epsilon_std = 0.01
+class Sampling(keras.layers.Layer):
+    """平均と対数分散から潜在変数をサンプリングし、KL ダイバージェンスを損失に加える。"""
 
-x = Input(batch_shape=(batch_size, original_dim))
-h = Dense(intermediate_dim, activation='relu')(x)
-z_mean = Dense(latent_dim)(h)
-z_log_var = Dense(latent_dim)(h)
+    def __init__(self, epsilon_std, **kwargs):
+        super().__init__(**kwargs)
+        self.epsilon_std = epsilon_std
+        self.seed_generator = keras.random.SeedGenerator()
 
-def sampling(args):
-    z_mean, z_log_var = args
-    epsilon = K.random_normal(shape=(batch_size, latent_dim), mean=0.,
-                              std=epsilon_std)
-    return z_mean + K.exp(z_log_var / 2) * epsilon
+    def call(self, inputs):
+        z_mean, z_log_var = inputs
+        kl_loss = -0.5 * ops.sum(
+            1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var), axis=-1)
+        self.add_loss(ops.mean(kl_loss))
+        epsilon = keras.random.normal(
+            ops.shape(z_mean), stddev=self.epsilon_std, seed=self.seed_generator)
+        return z_mean + ops.exp(z_log_var / 2) * epsilon
 
-# note that "output_shape" isn't necessary with the TensorFlow backend
-z = Lambda(sampling, output_shape=(latent_dim,))([z_mean, z_log_var])
 
-# we instantiate these layers separately so as to reuse them later
-decoder_h = Dense(intermediate_dim, activation='relu')
-decoder_mean = Dense(original_dim, activation='sigmoid')
-h_decoded = decoder_h(z)
-x_decoded_mean = decoder_mean(h_decoded)
+def reconstruction_loss(x, x_decoded_mean):
+    return ORIGINAL_DIM * keras.losses.binary_crossentropy(x, x_decoded_mean)
 
-def vae_loss(x, x_decoded_mean):
-    xent_loss = original_dim * objectives.binary_crossentropy(x, x_decoded_mean)
-    kl_loss = - 0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-    return xent_loss + kl_loss
 
-vae = Model(x, x_decoded_mean)
-vae.compile(optimizer='rmsprop', loss=vae_loss)
+def build_models():
+    """VAE 本体、入力を潜在空間に写すエンコーダ、潜在変数から画像を作るジェネレータを返す。"""
+    x = keras.Input(shape=(ORIGINAL_DIM,))
+    h = keras.layers.Dense(INTERMEDIATE_DIM, activation="relu")(x)
+    z_mean = keras.layers.Dense(LATENT_DIM)(h)
+    z_log_var = keras.layers.Dense(LATENT_DIM)(h)
+    z = Sampling(EPSILON_STD)([z_mean, z_log_var])
 
-# train the VAE on MNIST digits
-(x_train, y_train), (x_test, y_test) = mnist.load_data()
+    # ジェネレータでも使うため、デコーダの層は別に作っておく
+    decoder_h = keras.layers.Dense(INTERMEDIATE_DIM, activation="relu")
+    decoder_mean = keras.layers.Dense(ORIGINAL_DIM, activation="sigmoid")
+    vae = keras.Model(x, decoder_mean(decoder_h(z)))
 
-x_train = x_train.astype('float32') / 255.
-x_test = x_test.astype('float32') / 255.
-x_train = x_train.reshape((len(x_train), np.prod(x_train.shape[1:])))
-x_test = x_test.reshape((len(x_test), np.prod(x_test.shape[1:])))
+    encoder = keras.Model(x, z_mean)
 
-vae.fit(x_train, x_train,
-        shuffle=True,
-        nb_epoch=nb_epoch,
-        batch_size=batch_size,
-        validation_data=(x_test, x_test))
+    decoder_input = keras.Input(shape=(LATENT_DIM,))
+    generator = keras.Model(decoder_input, decoder_mean(decoder_h(decoder_input)))
+    return vae, encoder, generator
 
-# build a model to project inputs on the latent space
-encoder = Model(x, z_mean)
 
-# display a 2D plot of the digit classes in the latent space
-x_test_encoded = encoder.predict(x_test, batch_size=batch_size)
-plt.figure(figsize=(6, 6))
-plt.scatter(x_test_encoded[:, 0], x_test_encoded[:, 1], c=y_test)
-plt.colorbar()
-plt.show()
+def load_data():
+    (x_train, _), (x_test, y_test) = keras.datasets.mnist.load_data()
+    x_train = x_train.reshape(len(x_train), ORIGINAL_DIM).astype("float32") / 255.0
+    x_test = x_test.reshape(len(x_test), ORIGINAL_DIM).astype("float32") / 255.0
+    return x_train, (x_test, y_test)
 
-# build a digit generator that can sample from the learned distribution
-decoder_input = Input(shape=(latent_dim,))
-_h_decoded = decoder_h(decoder_input)
-_x_decoded_mean = decoder_mean(_h_decoded)
-generator = Model(decoder_input, _x_decoded_mean)
 
-# display a 2D manifold of the digits
-n = 15  # figure with 15x15 digits
-digit_size = 28
-figure = np.zeros((digit_size * n, digit_size * n))
+def save_latent_space(encoder, x_test, y_test, path):
+    """テスト画像を潜在空間に写し、ラベルで色分けした散布図を保存する。"""
+    x_test_encoded = encoder.predict(x_test, batch_size=BATCH_SIZE)
+    fig = Figure(figsize=(6, 6))
+    ax = fig.add_subplot()
+    points = ax.scatter(x_test_encoded[:, 0], x_test_encoded[:, 1], c=y_test)
+    fig.colorbar(points)
+    fig.savefig(path)
 
-# we will sample n points within [-15, 15] standard deviations
-grid_x = np.linspace(-15, 15, n)
-grid_y = np.linspace(-15, 15, n)
 
-for i, yi in enumerate(grid_x):
-    for j, xi in enumerate(grid_y):
-        z_sample = np.array([[xi, yi]]) * epsilon_std
-        x_decoded = generator.predict(z_sample)
-        digit = x_decoded[0].reshape(digit_size, digit_size)
-        figure[i * digit_size: (i + 1) * digit_size,
-               j * digit_size: (j + 1) * digit_size] = digit
+def save_manifold(generator, path, n=15, digit_size=28):
+    """潜在空間の n×n の格子点から生成した数字を並べて保存する。"""
+    # 標準偏差の -15〜15 倍の範囲から格子点を取る
+    grid = np.linspace(-15, 15, n) * EPSILON_STD
+    z_samples = np.array([[xi, yi] for yi in grid for xi in grid])
+    digits = generator.predict(z_samples, batch_size=BATCH_SIZE)
+    figure = (digits.reshape(n, n, digit_size, digit_size)
+              .transpose(0, 2, 1, 3)
+              .reshape(n * digit_size, n * digit_size))
+    fig = Figure(figsize=(10, 10))
+    ax = fig.add_subplot()
+    ax.imshow(figure)
+    fig.savefig(path)
 
-plt.figure(figsize=(10, 10))
-plt.imshow(figure)
-plt.show()
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--result-dir", default="result")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    os.makedirs(args.result_dir, exist_ok=True)
+
+    vae, encoder, generator = build_models()
+    vae.compile(optimizer="rmsprop", loss=reconstruction_loss)
+
+    x_train, (x_test, y_test) = load_data()
+    vae.fit(x_train, x_train,
+            shuffle=True,
+            epochs=args.epochs,
+            batch_size=BATCH_SIZE,
+            validation_data=(x_test, x_test))
+
+    save_latent_space(encoder, x_test, y_test, os.path.join(args.result_dir, "latent.png"))
+    save_manifold(generator, os.path.join(args.result_dir, "manifold.png"))
+
+
+if __name__ == "__main__":
+    main()
