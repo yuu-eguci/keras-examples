@@ -21,8 +21,8 @@ export KERAS_BACKEND=jax
 
 | スクリプト | 内容 | 既定のエポック数 |
 | --- | --- | --- |
-| `mlp/mnist.py` | MNIST を多層パーセプトロンで分類 | 100（Early Stopping あり） |
-| `cnn/mnist/mnist.py` | MNIST を畳み込みニューラルネットワークで分類 | 100（Early Stopping あり） |
+| `mlp/mnist.py` | MNIST を多層パーセプトロンで分類 | 100（検証損失が改善しなくなった時点で終了） |
+| `cnn/mnist/mnist.py` | MNIST を畳み込みニューラルネットワークで分類 | 100（検証損失が改善しなくなった時点で終了） |
 | `mlp/cifar10.py` | CIFAR-10 を多層パーセプトロンで分類 | 200 |
 | `cnn/cifar10/cifar10.py` | CIFAR-10 を畳み込みニューラルネットワークで分類 | 50 |
 
@@ -33,7 +33,7 @@ export KERAS_BACKEND=jax
 | オプション | 意味 |
 | --- | --- |
 | `--epochs` | 学習エポック数 |
-| `--result-dir` | 結果の保存先ディレクトリ（既定は `result`。なければ作成） |
+| `--result-dir` | 結果の保存先ディレクトリ（既定は実行したディレクトリの `result`。なければ作成） |
 | `--augment` | `cnn/cifar10/cifar10.py` のみ。学習時に画像を縦横ランダムに最大10%平行移動してデータを拡張する |
 
 どのスクリプトも保存先ディレクトリに次のファイルを書き出します。
@@ -53,7 +53,7 @@ export KERAS_BACKEND=jax
 | `cnn/cifar10/cifar10.py` | `plot.png` | クラスごとに訓練画像を最大10枚ずつ並べた画像 |
 | `cnn/cifar10/cifar10.py` | `model.keras` | 学習済みモデル |
 
-`cnn/cifar10/visualize_filters.py --result-dir <ディレクトリ>` は、そのディレクトリの `model.keras` を読み込み、1層目の畳み込みフィルタを `filters.png` として同じディレクトリに保存します。`cnn/cifar10/plot_results.py` は `result_without_datagen/history.txt` と `result_with_datagen/history.txt` の検証損失・検証精度を比較するグラフを保存します。
+`cnn/cifar10/visualize_filters.py --result-dir <ディレクトリ>` は、そのディレクトリの `model.keras` を読み込み、1層目の畳み込みフィルタを `filters.png` として同じディレクトリに保存します。`cnn/cifar10/plot_results.py` は、実行したディレクトリにある `result_without_datagen/history.txt` と `result_with_datagen/history.txt` を読み込み、検証損失と検証精度を比較するグラフを `val_loss.png` / `val_acc.png` として同じディレクトリに保存します。
 
 ### オートエンコーダ
 
