@@ -12,7 +12,7 @@ ENCODING_DIM = 32
 
 def build_model():
     input_img = keras.Input(shape=(784,))
-    encoded = keras.layers.Dense(ENCODING_DIM, activation="relu")(input_img)
+    encoded = keras.layers.Dense(ENCODING_DIM, activation="relu", name="encoded")(input_img)
     decoded = keras.layers.Dense(784, activation="sigmoid")(encoded)
     return keras.Model(input_img, decoded)
 
@@ -57,7 +57,7 @@ def main(argv=None):
                     validation_data=(x_test, x_test))
 
     # 中間層の出力を取り出すエンコーダ
-    encoder = keras.Model(autoencoder.input, autoencoder.layers[1].output)
+    encoder = keras.Model(autoencoder.input, autoencoder.get_layer("encoded").output)
     encoded_imgs = encoder.predict(x_test)
     print("mean of hidden outputs: %f" % encoded_imgs.mean())
 

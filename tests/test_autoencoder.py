@@ -18,6 +18,18 @@ def test_dense_autoencoder_reconstructs_flat_images(script):
     assert model.output_shape == (None, 784)
 
 
+@pytest.mark.parametrize("script", [
+    "autoencoder/mnist_autoencoder.py",
+    "autoencoder/mnist_autoencoder_l1.py",
+])
+def test_encoded_layer_outputs_encoding_dim(script):
+    module = load_example(script)
+
+    encoded = module.build_model().get_layer("encoded")
+
+    assert encoded.output.shape == (None, module.ENCODING_DIM)
+
+
 def test_conv_autoencoder_reconstructs_image_tensors():
     model = load_example("autoencoder/mnist_conv_autoencoder.py").build_model()
 

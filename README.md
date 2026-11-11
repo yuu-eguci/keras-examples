@@ -43,4 +43,4 @@ MNIST は初回実行時に `~/.keras/datasets/` へダウンロードされま�
 .venv/bin/python -m pytest
 ```
 
-テストは合成した極小データを使い、データセットのダウンロードなしに CPU だけで実行できます。GitHub Actions でも push と pull request ごとに同じテストを実行します。
+テストは合成した極小データを使い、データセットのダウンロードなしに CPU だけで実行できます。GitHub Actions でも pull request と master への push ごとに同じテストを実行します。
