@@ -74,7 +74,7 @@ def make_noise(rng, n):
 
 def train_discriminator(discriminator, real_images, generated_images):
     """訓練画像を1、生成画像を0と判定するように Discriminator を更新する。"""
-    # Keras 3 では trainable を更新のたびに設定し直す必要がある
+    # 更新される重みは train_on_batch を呼んだ時点の trainable で決まるため、毎回設定する
     discriminator.trainable = True
     x = np.concatenate((real_images, generated_images))
     y = np.concatenate((np.ones((len(real_images), 1)), np.zeros((len(generated_images), 1))))
@@ -83,6 +83,7 @@ def train_discriminator(discriminator, real_images, generated_images):
 
 def train_generator(dcgan, discriminator, noise):
     """生成画像を Discriminator が1（訓練画像）と判定するように Generator だけを更新する。"""
+    # Discriminator を固定し、DCGAN 全体のうち Generator の重みだけを更新する
     discriminator.trainable = False
     return dcgan.train_on_batch(noise, np.ones((len(noise), 1)))
 
