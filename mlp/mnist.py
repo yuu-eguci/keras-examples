@@ -1,6 +1,6 @@
 """MNIST の数字を多層パーセプトロンで分類する。
 
-参考: https://github.com/keras-team/keras/blob/master/examples/mnist_mlp.py
+参考: https://github.com/keras-team/keras/blob/2.3.1/examples/mnist_mlp.py
 """
 import argparse
 import os

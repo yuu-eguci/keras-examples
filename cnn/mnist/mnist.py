@@ -1,6 +1,6 @@
 """MNIST の数字を畳み込みニューラルネットワークで分類する。
 
-参考: https://github.com/keras-team/keras/blob/master/examples/mnist_cnn.py
+参考: https://github.com/keras-team/keras/blob/2.3.1/examples/mnist_cnn.py
 """
 import argparse
 import os

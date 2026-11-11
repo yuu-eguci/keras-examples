@@ -11,8 +11,9 @@ def build_model(augment=False):
     layers = keras.layers
     model = keras.Sequential([keras.Input(shape=(32, 32, 3))])
     if augment:
-        # 学習時だけ画像を縦横ランダムに最大10%平行移動する（推論時は何もしない）
-        model.add(layers.RandomTranslation(0.1, 0.1))
+        # 学習時だけ画像を縦横ランダムに最大10%平行移動し、空いた部分は端の画素で埋める
+        # （推論時は何もしない）
+        model.add(layers.RandomTranslation(0.1, 0.1, fill_mode="nearest"))
     for layer in [
         layers.Conv2D(32, 3, padding="same", activation="relu"),
         layers.Conv2D(32, 3, activation="relu"),

@@ -1,6 +1,7 @@
 import runpy
 
 import keras
+import numpy as np
 import pytest
 
 from conftest import REPO_ROOT, load_example
@@ -22,6 +23,8 @@ def test_model_outputs_probabilities_for_ten_classes(script, input_shape):
 
     assert model.input_shape == input_shape
     assert model.output_shape == (None, 10)
+    probabilities = model.predict(np.zeros((2,) + input_shape[1:]), verbose=0)
+    np.testing.assert_allclose(probabilities.sum(axis=1), 1.0, rtol=1e-5)
 
 
 @pytest.mark.parametrize("script, epochs", [
@@ -47,6 +50,48 @@ def test_cifar10_cnn_augments_only_when_requested():
     assert not module.parse_args([]).augment
     assert not has_translation(module.build_model())
     assert has_translation(module.build_model(augment=True))
+
+
+def test_cifar10_cnn_augmentation_fills_with_nearest_pixels():
+    model = load_example("cnn/cifar10/cifar10.py").build_model(augment=True)
+
+    translation = model.layers[0]
+
+    assert isinstance(translation, keras.layers.RandomTranslation)
+    assert translation.fill_mode == "nearest"
+
+
+@pytest.fixture
+def fit_calls(monkeypatch):
+    """Model.fit に渡された引数を記録する（学習自体はそのまま行う）。"""
+    calls = []
+    original_fit = keras.Model.fit
+
+    def recording_fit(self, *args, **kwargs):
+        calls.append(kwargs)
+        return original_fit(self, *args, **kwargs)
+
+    monkeypatch.setattr(keras.Model, "fit", recording_fit)
+    return calls
+
+
+@pytest.mark.parametrize("script", MNIST_SCRIPTS)
+def test_mnist_validates_on_train_split_and_stops_early(
+        script, fake_mnist, fit_calls, tmp_path):
+    load_example(script).main(["--epochs", "1", "--result-dir", str(tmp_path)])
+
+    (kwargs,) = fit_calls
+    assert kwargs["validation_split"] == 0.1
+    assert any(isinstance(cb, keras.callbacks.EarlyStopping) for cb in kwargs["callbacks"])
+
+
+@pytest.mark.parametrize("script", CIFAR10_SCRIPTS)
+def test_cifar10_validates_on_test_data(script, fake_cifar10, fit_calls, tmp_path):
+    load_example(script).main(["--epochs", "1", "--result-dir", str(tmp_path)])
+
+    (kwargs,) = fit_calls
+    x_val, y_val = kwargs["validation_data"]
+    assert len(x_val) == len(y_val) == 16
 
 
 def assert_history_has_one_epoch(result_dir):
