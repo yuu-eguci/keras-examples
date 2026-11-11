@@ -1,69 +1,88 @@
-from keras.datasets import cifar10
-from keras.models import Sequential
-from keras.layers import Dense, Dropout, Activation, Flatten
-from keras.utils import np_utils
+"""CIFAR-10 の画像を多層パーセプトロンで分類する。"""
+import argparse
+import os
+
+import keras
+from matplotlib.figure import Figure
 
 
-def save_history(history, result_file):
-    loss = history.history['loss']
-    acc = history.history['acc']
-    val_loss = history.history['val_loss']
-    val_acc = history.history['val_acc']
-    nb_epoch = len(acc)
+def build_model():
+    layers = keras.layers
+    return keras.Sequential([
+        keras.Input(shape=(32 * 32 * 3,)),
+        layers.Dense(1024, activation="relu"),
+        layers.Dropout(0.2),
+        layers.Dense(512, activation="relu"),
+        layers.Dropout(0.2),
+        layers.Dense(512, activation="relu"),
+        layers.Dropout(0.2),
+        layers.Dense(10, activation="softmax"),
+    ])
 
-    with open(result_file, "w") as fp:
+
+def load_data():
+    (x_train, y_train), (x_test, y_test) = keras.datasets.cifar10.load_data()
+    # 画像を1次元配列にし、画素値を 0.0〜1.0 に変換
+    x_train = x_train.reshape(len(x_train), -1).astype("float32") / 255.0
+    x_test = x_test.reshape(len(x_test), -1).astype("float32") / 255.0
+    return (x_train, y_train), (x_test, y_test)
+
+
+def save_history(history, result_dir):
+    h = history.history
+    with open(os.path.join(result_dir, "history.txt"), "w") as fp:
         fp.write("epoch\tloss\tacc\tval_loss\tval_acc\n")
-        for i in range(nb_epoch):
-            fp.write("%d\t%f\t%f\t%f\t%f\n" %
-                     (i, loss[i], acc[i], val_loss[i], val_acc[i]))
+        for i in range(len(h["loss"])):
+            fp.write("%d\t%f\t%f\t%f\t%f\n" % (
+                i, h["loss"][i], h["accuracy"][i], h["val_loss"][i], h["val_accuracy"][i]))
 
 
-if __name__ == '__main__':
-    nb_epoch = 200
-    batch_size = 128
-    nb_classes = 10
+def plot_history(history, result_dir):
+    """精度と損失の学習曲線を acc.png / loss.png に保存する。"""
+    for metric, filename in (("accuracy", "acc.png"), ("loss", "loss.png")):
+        fig = Figure()
+        ax = fig.add_subplot()
+        ax.plot(history.history[metric], marker=".", label="train")
+        ax.plot(history.history["val_" + metric], marker=".", label="validation")
+        ax.set_title("model " + metric)
+        ax.set_xlabel("epoch")
+        ax.set_ylabel(metric)
+        ax.grid()
+        ax.legend()
+        fig.savefig(os.path.join(result_dir, filename))
 
-    (X_train, y_train), (X_test, y_test) = cifar10.load_data()
 
-    X_train = X_train.reshape(50000, 32 * 32 * 3)
-    X_test = X_test.reshape(10000, 32 * 32 * 3)
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--epochs", type=int, default=200)
+    parser.add_argument("--result-dir", default="result")
+    return parser.parse_args(argv)
 
-    X_train = X_train.astype('float32')
-    X_test = X_test.astype('float32')
-    X_train /= 255.0
-    X_test /= 255.0
 
-    Y_train = np_utils.to_categorical(y_train, nb_classes)
-    Y_test = np_utils.to_categorical(y_test, nb_classes)
+def main(argv=None):
+    args = parse_args(argv)
+    os.makedirs(args.result_dir, exist_ok=True)
 
-    # MLP
-    model = Sequential()
-    model.add(Dense(1024, input_shape=(3072, )))
-    model.add(Activation('relu'))
-    model.add(Dropout(0.2))
-    model.add(Dense(512))
-    model.add(Activation('relu'))
-    model.add(Dropout(0.2))
-    model.add(Dense(512))
-    model.add(Activation('relu'))
-    model.add(Dropout(0.2))
-    model.add(Dense(10))
-    model.add(Activation('softmax'))
+    (x_train, y_train), (x_test, y_test) = load_data()
 
-    model.compile(loss='categorical_crossentropy',
-                  optimizer='adam',
-                  metrics=['accuracy'])
+    model = build_model()
     model.summary()
+    model.compile(loss="sparse_categorical_crossentropy",
+                  optimizer="adam",
+                  metrics=["accuracy"])
 
-    # training
-    history = model.fit(X_train, Y_train,
-                        batch_size=batch_size,
-                        nb_epoch=nb_epoch,
-                        verbose=1,
-                        validation_data=(X_test, Y_test))
+    history = model.fit(x_train, y_train,
+                        batch_size=128,
+                        epochs=args.epochs,
+                        validation_data=(x_test, y_test))
 
-    save_history(history, 'history.txt')
+    save_history(history, args.result_dir)
+    plot_history(history, args.result_dir)
 
-    loss, acc = model.evaluate(X_test, Y_test, verbose=0)
-    print('Test loss:', loss)
-    print('Test acc:', acc)
+    loss, acc = model.evaluate(x_test, y_test, verbose=0)
+    print("Test loss:", loss)
+    print("Test acc:", acc)
+
+
+if __name__ == "__main__":
+    main()
