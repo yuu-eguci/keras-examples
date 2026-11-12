@@ -192,7 +192,7 @@ ImageNet で学習済みの VGG16 の重みは、初回実行時に `~/.keras/mo
 
 どちらも ImageNet で学習済みの VGG16 を使い、入力画像に対する勾配を JAX で計算するため、`KERAS_BACKEND=jax` でだけ動きます。`dream/results/` には実行結果の例があります。
 
-`dream/visualize_vgg16.py --layer <層の名前>` は、指定した層からランダムに選んだ16個のフィルタについて、そのフィルタの出力の平均を最大化する画像を勾配法（RMSprop）で求め、4×4に並べて保存します。画像の Lp ノルムと Total Variation による正則化をかけます。`--layer predictions` を指定すると、ソフトマックスをかける前の出力でクラスごとに最大化し、画像にクラス名を表示します。層の名前は `block1_conv1`〜`block5_conv3`、`fc1`、`fc2`、`predictions` です。
+`dream/visualize_vgg16.py --layer <層の名前>` は、指定した層からランダムに選んだ16個のフィルタについて、そのフィルタの出力の平均を最大化する画像を勾配法（RMSprop）で求め、4×4に並べて保存します。画像の Lp ノルムと Total Variation による正則化をかけます。`--layer predictions` を指定すると、ソフトマックスをかける前の出力でクラスごとに最大化し、画像にクラス名を表示します。層の名前は `model.summary()` で表示される名前で、たとえば `block1_conv1`〜`block5_conv3`、`fc1`、`fc2`、`predictions` です。ない名前を指定すると、選べる層の一覧を表示して終了します。
 
 ```bash
 .venv/bin/python dream/visualize_vgg16.py --layer block5_conv1 --iterations 200
