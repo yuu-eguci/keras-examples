@@ -1,163 +1,116 @@
-"""
-Facebook bAbiデータを適用したLSTMエンコーダ
-https://www.youtube.com/watch?v=YimQOpSRULY&t=885s
-https://bitbucket.org/fchollet/keras_workshop
-http://www.thespermwhale.com/jaseweston/babi/tasks_1-20_v1-2.tar.gz
-"""
+"""bAbI の質問応答タスクで、ストーリーと質問をそれぞれ LSTM で符号化し、答えの単語を予測する。
 
-from keras.models import Sequential
-from keras.layers.embeddings import Embedding
-from keras.layers.core import Activation, Dense, Merge
-from keras.layers.recurrent import GRU, LSTM
-from keras.preprocessing.sequence import pad_sequences
-import re
-import codecs
-import numpy as np
+参考:
+- https://www.youtube.com/watch?v=YimQOpSRULY&t=885s
+- https://github.com/keras-team/keras/blob/2.3.1/examples/babi_rnn.py
+"""
+import argparse
 import itertools
+import os
+import re
+
+import keras
+import numpy as np
+
+EMBED_DIM = 64
+BATCH_SIZE = 32
 
 
-def tokenize(sent):
-    '''文章を単語に分割して返す
+def tokenize(sentence):
+    """文を単語と記号に分割する。
 
-    >>> tokenize('Bob dropped the apple. Where is the apple?')
+    >>> tokenize("Bob dropped the apple. Where is the apple?")
     ['Bob', 'dropped', 'the', 'apple', '.', 'Where', 'is', 'the', 'apple', '?']
-    '''
-    if sent == "":
-        print(sent)
-        exit(1)
-    return [x.strip() for x in re.split('(\W+)+', sent) if x.strip()]
+    """
+    return [x.strip() for x in re.split(r"(\W+)", sentence) if x.strip()]
 
 
-def parse_stories(lines, only_supporting=False):
-    '''bAbiタスク形式で与えられたストーリーを解析する'''
+def parse_stories(lines):
+    """bAbI 形式の行から (ストーリーの文のリスト, 質問, 答え) のリストを作る。"""
     data = []
     story = []
     for line in lines:
-        line = line.strip()
-        nid, line = line.split(' ', 1)
-        nid = int(nid)
-
-        # IDが1になったら新しいストーリーが始まる
-        if nid == 1:
+        nid, line = line.strip().split(" ", 1)
+        if int(nid) == 1:
             story = []
-        # タブが含まれる行は質問とその回答を含む
-        if '\t' in line:
-            q, a, supporting = line.split('\t')
-
-            # 質問を単語に分割する
-            q = tokenize(q)
-
-            # 根拠となるサブストーリーを取得
-            # only_supportingがTrueのときはタスクで指定された番号の文章のみ
-            # Falseのときはそのストーリーの全文章
-            substory = None
-            if only_supporting:
-                # supportingは複数の文番号が含まれるケースがある
-                # ストーリーは1から始まるので1をひく
-                supporting = map(int, supporting.split())
-                substory = [story[i - 1] for i in supporting]
-            else:
-                substory = [x for x in story if x]
-            data.append((substory, q, a))
-            story.append('')
+        if "\t" in line:
+            question, answer, _ = line.split("\t")
+            data.append(([sentence for sentence in story if sentence], tokenize(question), answer))
+            # 質問の行も番号を数えるので、空の文を入れて番号をそろえる
+            story.append([])
         else:
-            sent = tokenize(line)
-            story.append(sent)
+            story.append(tokenize(line))
     return data
 
 
-def get_stories(filename, only_supporting=False, max_length=None):
-    fp = codecs.open(filename, 'r', 'utf-8')
-
-    # dataは質問の数だけタプルがあるリスト
-    # data = [ ([supportする文章リスト], 質問文, 回答),  # 1つめの質問
-    #          ([supportする文章リスト], 質問文, 回答),  # 2つめの質問
-    #          ...
-    # ]
-    data = parse_stories(fp.readlines(), only_supporting=only_supporting)
-
-    def flatten(lst):
-        '''リストをフラット化（1次元配列）する
-        http://docs.python.jp/2/library/itertools.html'''
-        return list(itertools.chain.from_iterable(lst))
-
-    data = [(flatten(story), q, answer) for story, q, answer in data if not max_length or len(flatten(story)) < max_length]
-    return data
+def get_stories(filename):
+    with open(filename, encoding="utf-8") as fp:
+        data = parse_stories(fp.readlines())
+    # ストーリーの文をつなげて1つの単語列にする
+    return [(list(itertools.chain.from_iterable(story)), question, answer)
+            for story, question, answer in data]
 
 
-def vectorize_stories(data, word_idx, story_maxlen, query_maxlen):
-    X = []
-    Xq = []
-    Y = []
-    for story, query, answer in data:
-        x = [word_idx[w] for w in story]
-        xq = [word_idx[w] for w in query]
-        # 正解の単語のインデックスのみ1
-        y = np.zeros(len(word_idx) + 1)  # 0は予約
-        y[word_idx[answer]] = 1
-        X.append(x)
-        Xq.append(xq)
-        Y.append(y)
-
-    # 時系列データをパディング
-    # >>> pad_sequences([[1,2], [1,2,3], [1], [1,2,3,4,5]], 5)
-    # array([[0, 0, 0, 1, 2],
-    #        [0, 0, 1, 2, 3],
-    #        [0, 0, 0, 0, 1],
-    #        [1, 2, 3, 4, 5]], dtype=int32)
-    return pad_sequences(X, maxlen=story_maxlen), pad_sequences(Xq, maxlen=query_maxlen), np.array(Y)
+def build_vocabulary(stories):
+    """単語の番号（1から。0はパディング用）、語彙数、ストーリーと質問の最大長を返す。"""
+    vocab = sorted({w for story, query, answer in stories for w in story + query + [answer]})
+    word_index = {word: i + 1 for i, word in enumerate(vocab)}
+    story_maxlen = max(len(story) for story, _, _ in stories)
+    query_maxlen = max(len(query) for _, query, _ in stories)
+    return word_index, len(vocab) + 1, story_maxlen, query_maxlen
 
 
-if __name__ == '__main__':
-    # 対象とするタスク
-    # {}にはtrainかtestが入る
-    challenge = "tasks_1-20_v1-2/en-10k/qa1_single-supporting-fact_{}.txt"
+def vectorize_stories(data, word_index, story_maxlen, query_maxlen):
+    stories = [[word_index[w] for w in story] for story, _, _ in data]
+    queries = [[word_index[w] for w in query] for _, query, _ in data]
+    answers = np.array([word_index[answer] for _, _, answer in data])
+    return (keras.utils.pad_sequences(stories, maxlen=story_maxlen),
+            keras.utils.pad_sequences(queries, maxlen=query_maxlen),
+            answers)
 
-    print(challenge.format('train'))
 
-    # 訓練データとテストデータを取得
-    train_stories = get_stories(challenge.format('train'))
-    test_stories = get_stories(challenge.format('test'))
+def build_model(vocab_size, story_maxlen, query_maxlen):
+    """ストーリーと質問をそれぞれ埋め込み・LSTM で符号化し、足し合わせて答えの単語を予測する。"""
+    layers = keras.layers
+    story = keras.Input(shape=(story_maxlen,))
+    query = keras.Input(shape=(query_maxlen,))
+    encoded_story = layers.LSTM(EMBED_DIM)(layers.Embedding(vocab_size, EMBED_DIM)(story))
+    encoded_query = layers.LSTM(EMBED_DIM)(layers.Embedding(vocab_size, EMBED_DIM)(query))
+    merged = layers.Add()([encoded_story, encoded_query])
+    answer = layers.Dense(vocab_size, activation="softmax")(merged)
+    return keras.Model([story, query], answer)
 
-    # (根拠文, 質問文, 回答) の組の数
-    print("# of train_stories", len(train_stories))
-    print("# of test_stories", len(test_stories))
 
-    vocab = []
-    for story, q, answer in train_stories + test_stories:
-        vocab.extend(story)
-        vocab.extend(q)
-        vocab.extend([answer])
-    vocab = sorted(set(vocab))
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data-dir", default="tasks_1-20_v1-2")
+    parser.add_argument("--task", default="qa1_single-supporting-fact")
+    parser.add_argument("--epochs", type=int, default=40)
+    return parser.parse_args(argv)
 
-    # 0は使わない
-    vocab_size = len(vocab) + 1
 
-    # 根拠文と質問の最大単語数を取得
-    story_maxlen = max(map(len, (x for x, _, _ in train_stories + test_stories)))
-    query_maxlen = max(map(len, (x for _, x, _ in train_stories + test_stories)))
+def main(argv=None):
+    args = parse_args(argv)
+    path = os.path.join(args.data_dir, "en-10k", args.task + "_{}.txt")
+    train_stories = get_stories(path.format("train"))
+    test_stories = get_stories(path.format("test"))
+    print("# of train stories:", len(train_stories))
+    print("# of test stories:", len(test_stories))
 
-    print(vocab_size)
-    print(story_maxlen)
-    print(query_maxlen)
+    word_index, vocab_size, story_maxlen, query_maxlen = build_vocabulary(train_stories + test_stories)
+    print("vocab size:", vocab_size, "story maxlen:", story_maxlen, "query maxlen:", query_maxlen)
 
-    # 単語をインデックスに変換
-    word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
-    inputs_train, queries_train, answers_train = vectorize_stories(train_stories, word_idx, story_maxlen, query_maxlen)
-    inputs_test, queries_test, answers_test = vectorize_stories(test_stories, word_idx, story_maxlen, query_maxlen)
+    x_train, xq_train, y_train = vectorize_stories(train_stories, word_index, story_maxlen, query_maxlen)
+    x_test, xq_test, y_test = vectorize_stories(test_stories, word_index, story_maxlen, query_maxlen)
 
-    print(inputs_train[0])
-    print(queries_train[0])
-    print(answers_train[0])
+    model = build_model(vocab_size, story_maxlen, query_maxlen)
+    model.compile(optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"])
+    model.fit([x_train, xq_train], y_train, batch_size=BATCH_SIZE, epochs=args.epochs,
+              validation_split=0.05)
 
-    # モデルを構築
-    input_encoder = Sequential()
-    input_encoder.add(Embedding(input_dim=vocab_size, output_dim=64))
-    input_encoder.add(LSTM(64, return_sequences=False))
+    loss, accuracy = model.evaluate([x_test, xq_test], y_test, batch_size=BATCH_SIZE, verbose=0)
+    print("Test loss: %.4f / Test accuracy: %.4f" % (loss, accuracy))
 
-    question_encoder = Sequential()
-    question_encoder.add(Embedding(input_dim=vocab_size, output_dim=64))
-    question_encoder.add(LSTM(64, return_sequences=False))
 
-    model = Sequential()
-    model.add(Merge([input_encoder, question_encoder, ]))
+if __name__ == "__main__":
+    main()

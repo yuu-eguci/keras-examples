@@ -1,82 +1,63 @@
+"""Reuters のニュースを、よく出る単語の有無を表すベクトルにして、多層パーセプトロンでトピックに分類する。
+
+参考: https://github.com/keras-team/keras/blob/2.3.1/examples/reuters_mlp.py
+"""
+import argparse
+
+import keras
 import numpy as np
-np.random.seed(1337)  # for reproducibility
 
-from keras.datasets import reuters
-from keras.models import Sequential
-from keras.layers import Dense, Dropout, Activation
-from keras.callbacks import EarlyStopping
-from keras.utils import np_utils
-from keras.preprocessing.text import Tokenizer
+MAX_WORDS = 1000
 
-if __name__ == '__main__':
-    max_words = 1000
-    batch_size = 32
-    nb_epoch = 100
 
-    # Reutersデータセットをロード
-    # Xは各文章に含まれる単語インデックスのリストで表される
-    # 単語インデックスがmax_wordsまでの単語のみ残す
-    # TODO: the, ofなどのstop wordsは除去したほうがよい？
-    (X_train, y_train), (X_test, y_test) = reuters.load_data(nb_words=max_words, test_split=0.2)
+def to_binary_matrix(sequences, num_words):
+    """単語番号の列を、各単語が出てくれば1、出てこなければ0の行列にする。"""
+    matrix = np.zeros((len(sequences), num_words), dtype="float32")
+    for i, sequence in enumerate(sequences):
+        matrix[i, [word for word in sequence if word < num_words]] = 1.0
+    return matrix
 
-    print(len(X_train), 'train sequences')
-    print(len(X_test), 'test sequences')
 
-    # # word => indexの辞書を取得
-    # word_index = reuters.get_word_index()
-    #
-    # # index => wordの辞書を作成
-    # index_word = dict([(v, k) for k, v in word_index.items()])
-    #
-    # for i in range(1, max_words + 1):
-    #     print(i, index_word[i])
+def build_model(num_classes):
+    return keras.Sequential([
+        keras.Input(shape=(MAX_WORDS,)),
+        keras.layers.Dense(512, activation="relu"),
+        keras.layers.Dropout(0.5),
+        keras.layers.Dense(num_classes, activation="softmax"),
+    ])
 
-    # 文書のクラス数を計算
-    nb_classes = np.max(y_train) + 1
-    print(nb_classes, 'classes')
 
-    # 行が文書、列が単語になる行列に変換
-    # 0:文書がその単語を含まない
-    # 1:文書がその単語を含む
-    print('Vectorizing sequence data...')
-    tokenizer = Tokenizer(nb_words=max_words)
-    X_train = tokenizer.sequences_to_matrix(X_train, mode='binary')
-    X_test = tokenizer.sequences_to_matrix(X_test, mode='binary')
-    print('X_train shape:', X_train.shape)
-    print('X_test shape:', X_test.shape)
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--epochs", type=int, default=100)
+    return parser.parse_args(argv)
 
-    # クラスラベルをone-hot-encoding
-    print('Convert class vector to binary class matrix (for use with categorical_crossentropy)')
-    Y_train = np_utils.to_categorical(y_train, nb_classes)
-    Y_test = np_utils.to_categorical(y_test, nb_classes)
-    print('Y_train shape:', Y_train.shape)
-    print('Y_test shape:', Y_test.shape)
 
-    # 多層パーセプトロン
-    print('Building model...')
-    model = Sequential()
-    model.add(Dense(512, input_shape=(max_words,)))
-    model.add(Activation('relu'))
-    model.add(Dropout(0.5))
-    model.add(Dense(nb_classes))
-    model.add(Activation('softmax'))
+def main(argv=None):
+    args = parse_args(argv)
+    keras.utils.set_random_seed(1337)
 
-    # Early-stopping
-    early_stopping = EarlyStopping()
+    (x_train, y_train), (x_test, y_test) = keras.datasets.reuters.load_data(
+        num_words=MAX_WORDS, test_split=0.2)
+    print(len(x_train), "train sequences")
+    print(len(x_test), "test sequences")
+    num_classes = int(np.max(y_train)) + 1
+    print(num_classes, "classes")
 
-    model.compile(loss='categorical_crossentropy',
-                  optimizer='adam',
-                  metrics=['accuracy'])
+    x_train = to_binary_matrix(x_train, MAX_WORDS)
+    x_test = to_binary_matrix(x_test, MAX_WORDS)
 
-    history = model.fit(X_train, Y_train,
-                        nb_epoch=nb_epoch,
-                        batch_size=batch_size,
-                        verbose=1,
-                        validation_split=0.1,
-                        callbacks=[early_stopping])
+    model = build_model(num_classes)
+    model.compile(loss="sparse_categorical_crossentropy", optimizer="adam", metrics=["accuracy"])
+    model.fit(x_train, y_train,
+              epochs=args.epochs,
+              batch_size=32,
+              validation_split=0.1,
+              callbacks=[keras.callbacks.EarlyStopping()])
 
-    loss, acc = model.evaluate(X_test, Y_test,
-                               batch_size=batch_size,
-                               verbose=0)
+    _, accuracy = model.evaluate(x_test, y_test, batch_size=32, verbose=0)
+    print("Test acc:", accuracy)
 
-    print('Test acc:', acc)
+
+if __name__ == "__main__":
+    main()
