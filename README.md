@@ -122,11 +122,13 @@ DCGAN は1バッチごとに Discriminator と Generator を交互に更新し�
 | `result_horizontal_flip.jpg` | 50%の確率で左右反転 |
 | `result_vertical_flip.jpg` | 50%の確率で上下反転 |
 
-`zca_whitening/zca_whitening.py` は、白色化前の画像を `zca_whitening_before.png`、白色化後の画像を `zca_whitening_after.png` に保存します。白色化後の画像は表示用に画像ごとに 0〜1 に正規化しています。50,000枚×3,072次元の行列を扱うため、2 GB 程度のメモリを使います。
+`zca_whitening/zca_whitening.py` は、白色化前の画像を `zca_whitening_before.png`、白色化後の画像を `zca_whitening_after.png` に保存します。どちらの画像も、表示用に画像ごとに最小値〜最大値を 0〜1 に正規化しています。50,000枚×3,072次元の行列を扱うため、2 GB 程度のメモリを使います。
 
 ### そのほか
 
 上記以外のスクリプトは Keras 3 での動作を確認していません（多くは Keras 1 の API で書かれています）。
+
+`blog/` は各例を解説したブログ記事の原稿で、Keras 1 の API とそのころのスクリプトに基づいています。
 
 ## テスト
 
