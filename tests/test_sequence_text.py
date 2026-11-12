@@ -19,7 +19,7 @@ BABI_TEST = """1 Sandra went to the kitchen.
 
 
 @pytest.mark.parametrize("script, epochs", [
-    ("lstm/alphabet_lstm.py", 300),
+    ("lstm/alphabet_lstm.py", 2000),
     ("lstm/lstm_qa.py", 40),
     ("nlp/reuters.py", 100),
     ("word2vec/word_embedding.py", 5000),
@@ -28,21 +28,31 @@ def test_default_epochs(script, epochs):
     assert load_example(script).parse_args([]).epochs == epochs
 
 
-def test_alphabet_dataset_pairs_each_letter_with_the_next():
+def test_alphabet_dataset_is_one_sequence_predicting_the_next_letter():
     x, y = load_example("lstm/alphabet_lstm.py").make_dataset()
 
-    assert x.shape == (25, 1, 1)
-    np.testing.assert_allclose(x[:, 0, 0], np.arange(25) / 26)
-    np.testing.assert_array_equal(y, np.arange(1, 26))
+    assert x.shape == (1, 25, 1)
+    np.testing.assert_allclose(x[0, :, 0], np.arange(25) / 26)
+    np.testing.assert_array_equal(y, [np.arange(1, 26)])
 
 
-def test_alphabet_model_is_stateful_with_batch_size_one():
+def test_alphabet_model_predicts_at_every_position():
     model = load_example("lstm/alphabet_lstm.py").build_model()
 
-    lstm = model.get_layer("lstm")
-    assert lstm.stateful
-    assert model.input_shape == (1, 1, 1)
-    assert model.output_shape == (1, 26)
+    assert model.input_shape == (None, None, 1)
+    assert model.output_shape == (None, None, 26)
+
+
+def test_alphabet_lstm_learns_the_whole_sequence():
+    module = load_example("lstm/alphabet_lstm.py")
+    keras.utils.set_random_seed(7)
+    x, y = module.make_dataset()
+    model = module.build_model()
+    model.compile(loss="sparse_categorical_crossentropy", optimizer="adam", metrics=["accuracy"])
+
+    model.fit(x, y, epochs=2000, verbose=0)
+
+    assert module.predict_sequence(model, 0, 25) == list(range(26))
 
 
 def test_alphabet_main_prints_predicted_sequences(capsys):
@@ -51,6 +61,7 @@ def test_alphabet_main_prints_predicted_sequences(capsys):
     out = capsys.readouterr().out
     assert "Model accuracy (train data):" in out
     assert out.count(" -> ") == 25 + 5
+    assert "A -> " in out
     assert "New start: K" in out
 
 
