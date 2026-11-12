@@ -211,7 +211,7 @@ ImageNet で学習済みの VGG16 の重みは、初回実行時に `~/.keras/mo
 | `regression/boston.py` | `--no-standardize` | 入力を標準化しない（既定では交差検証の各分割で訓練データから平均と標準偏差を求めて標準化する） |
 | `regression/boston.py` | `--folds` | 交差検証の分割数（既定は10） |
 
-`mlp/pima.py` は学習後に、学習に使ったデータ全体での精度を表示します。
+`mlp/pima.py` は学習後に、全768件での精度を表示します（`--checkpoint-dir` を指定したときも同じ）。
 
 ### そのほか
 
