@@ -168,11 +168,11 @@ cd vgg16/17flowers
 
 訓練用と検証用の画像はすべてメモリに読み込みます（150×150 の画像 2,800 枚で約 760 MB）。
 
-保存先ディレクトリに次のファイルを書き出します（`<名前>` は `--name` の値）。
+保存先ディレクトリに次のファイルを書き出します（`<名前>` は `--name` で指定した名前、または既定の名前）。
 
 | ファイル | 内容 |
 | --- | --- |
-| `history_<名前>.txt` | エポックごとの `loss` / `acc` / `val_loss` / `val_acc`（タブ区切り。`plot_results.py` で比較できる） |
+| `history_<名前>.txt` | エポックごとの `loss` / `acc` / `val_loss` / `val_acc`（タブ区切り。`17flowers/` と `dogs_vs_cats/` の `plot_results.py` が `results/` から読み込み、学習方法どうしの検証損失・検証精度を比較するグラフにする） |
 | `model_<名前>.keras` | 前処理を含む学習済みモデル |
 | `classes.txt` | クラス名（1行に1クラス、出力の順） |
 | `top_<名前>.weights.h5` | `extractor` のみ。学習した全結合層の重み（`--top-weights` に渡せる） |
