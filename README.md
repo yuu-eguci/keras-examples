@@ -126,6 +126,59 @@ DCGAN は1バッチごとに Discriminator と Generator を交互に更新し�
 
 `zca_whitening/zca_whitening.py` は、白色化前の画像を `zca_whitening_before.png`、白色化後の画像を `zca_whitening_after.png` に保存します。どちらの画像も、表示用に画像ごとに最小値〜最大値を 0〜1 に正規化しています。50,000枚×3,072次元の行列を扱うため、3 GB 程度のメモリを使います。
 
+### VGG16 による画像分類と転移学習
+
+`vgg16/test_vgg16/test_vgg16.py` は、ImageNet で学習済みの VGG16 で画像を分類し、確率の高い5クラスを表示します。
+
+```bash
+.venv/bin/python vgg16/test_vgg16/test_vgg16.py vgg16/test_vgg16/elephant.jpg
+```
+
+`vgg16/transfer_learning.py` は、クラスごとのサブディレクトリに画像を置いた訓練用と検証用のディレクトリから画像分類モデルを学習します。クラスはサブディレクトリ名（名前順）です。
+
+```bash
+cd vgg16/17flowers
+python setup.py  # jpg/ の画像を train_images/ と test_images/ にクラスごとに振り分ける
+../../.venv/bin/python ../transfer_learning.py --method finetuning \
+    --train-dir train_images --validation-dir test_images
+../../.venv/bin/python ../predict.py --model results/model_finetuning.keras jpg/image_0001.jpg
+```
+
+`vgg16/dogs_vs_cats/setup.py` は Kaggle の Dogs vs. Cats の `train/` から、`data/train/` と `data/validation/` に犬と猫の画像を振り分けます。
+
+| `--method` | 学習方法 | 最適化手法 |
+| --- | --- | --- |
+| `smallcnn` | 畳み込み3層の小さな CNN をゼロから学習 | Adam |
+| `extractor` | ImageNet で学習済みの VGG16 の畳み込み部分で特徴量を一度だけ計算し、その上の全結合層だけを学習 | SGD（学習率 1e-4、モーメンタム 0.9） |
+| `finetuning` | 学習済みの VGG16 のうち最後のブロック（block5）と全結合層を学習 | SGD（学習率 1e-4、モーメンタム 0.9） |
+| `scratch` | VGG16 と同じ構成のネットワークを、学習済みの重みを使わずにゼロから学習 | Adam |
+
+| オプション | 意味 |
+| --- | --- |
+| `--train-dir` / `--validation-dir` | 訓練用・検証用の画像のディレクトリ（必須） |
+| `--method` | 学習方法（必須） |
+| `--preprocess` | `rescale`（既定。画素値を 0〜1 にする）または `vgg16`（ImageNet の学習時と同じ VGG16 用の前処理） |
+| `--epochs` | 学習エポック数（既定は50） |
+| `--image-size` | 画像を縦横このサイズにそろえる（既定は150） |
+| `--top-weights` | `finetuning` のみ。`extractor` で学習した全結合層の重みから学習を始める |
+| `--name` | 出力ファイル名に使う名前（既定は学習方法の名前。`--preprocess vgg16` のときは末尾に `_with_preprocess` が付く） |
+| `--result-dir` | 結果の保存先ディレクトリ（既定は実行したディレクトリの `results`。なければ作成） |
+
+`smallcnn` / `finetuning` / `scratch` は、学習時に画像をランダムに左右反転・拡大縮小（±20%）・せん断（最大約11度）してデータを拡張します。全結合層は256ユニットの隠れ層（Dropout 0.5）とクラス数ぶんの出力（softmax）です。
+
+保存先ディレクトリに次のファイルを書き出します（`<名前>` は `--name` の値）。
+
+| ファイル | 内容 |
+| --- | --- |
+| `history_<名前>.txt` | エポックごとの `loss` / `acc` / `val_loss` / `val_acc`（タブ区切り。`plot_results.py` で比較できる） |
+| `model_<名前>.keras` | 前処理を含む学習済みモデル |
+| `classes.txt` | クラス名（1行に1クラス、出力の順） |
+| `top_<名前>.weights.h5` | `extractor` のみ。学習した全結合層の重み（`--top-weights` に渡せる） |
+
+`vgg16/predict.py --model <モデル> <画像>...` は、モデルと同じディレクトリの `classes.txt` を読み、画像ごとに確率の高い最大5クラスを表示します。前処理はモデルに含まれているため、学習時と同じ前処理が自動でかかります。
+
+ImageNet で学習済みの VGG16 の重みは、初回実行時に `~/.keras/models/` へダウンロードされます（`include_top` なしで約 60 MB、`test_vgg16.py` が使う全結合層付きで約 550 MB）。
+
 ### そのほか
 
 上記以外のスクリプトは Keras 3 での動作を確認していません（多くは Keras 1 の API で書かれています）。
