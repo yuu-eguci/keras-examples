@@ -15,7 +15,7 @@ export KERAS_BACKEND=jax
 
 ## Keras 3 で動作確認済みの例
 
-データセット（MNIST / CIFAR-10 / Boston Housing）は初回実行時に `~/.keras/datasets/` へダウンロードされます。
+データセット（MNIST / CIFAR-10 / Boston Housing / Reuters）は初回実行時に `~/.keras/datasets/` へダウンロードされます。
 
 ### 画像分類
 
@@ -241,9 +241,31 @@ ImageNet で学習済みの VGG16 の重みは、初回実行時に `~/.keras/mo
 
 `mlp/pima.py` は学習後に、全768件での精度を表示します（`--checkpoint-dir` を指定したときも同じ）。
 
+### 系列データとテキスト
+
+| スクリプト | 内容 | 既定のエポック数 |
+| --- | --- | --- |
+| `lstm/alphabet_lstm.py` | 状態を持つ（stateful）LSTM で、アルファベットの1文字から次の文字を予測する。学習後に A から順に予測した結果と、K から始めた5文字分の予測を表示する | 300 |
+| `lstm/lstm_qa.py` | bAbI の質問応答タスクで、ストーリーと質問をそれぞれ LSTM で符号化して足し合わせ、答えの単語を予測する | 40 |
+| `nlp/reuters.py` | Reuters のニュースを、よく出る1,000語の有無を表すベクトルにして、多層パーセプトロンで46のトピックに分類する（検証データは訓練データの10%。検証損失が改善しなくなった時点で終了） | 100 |
+| `word2vec/word_embedding.py` | 「sam is red」のような8つの短い文から色が green かどうかを学習し、単語ごとの3次元の埋め込みベクトルを表示する | 5000 |
+
+どれも `--epochs` で学習エポック数を指定できます。
+
+`lstm/lstm_qa.py` は bAbI のデータ（[tasks_1-20_v1-2.tar.gz](https://s3.amazonaws.com/text-datasets/babi_tasks_1-20_v1-2.tar.gz)）を展開したディレクトリを読みます。
+
+```bash
+.venv/bin/python lstm/lstm_qa.py --data-dir tasks_1-20_v1-2
+```
+
+| オプション | 意味 |
+| --- | --- |
+| `--data-dir` | bAbI のデータを展開したディレクトリ（既定は実行したディレクトリの `tasks_1-20_v1-2`） |
+| `--task` | タスクのファイル名の先頭部分（既定は `qa1_single-supporting-fact`。`en-10k/<タスク>_train.txt` と `_test.txt` を読む） |
+
 ### そのほか
 
-上記以外のスクリプトは Keras 3 での動作を確認していません（多くは Keras 1 の API で書かれています）。
+`cnn/mnist/plot_mnist.py`（MNIST の画像を4枚表示する）と `imagenet/` の画像収集スクリプトは、Keras 3 での動作確認とテストの対象外です。
 
 `blog/` は各例を解説したブログ記事の原稿で、Keras 1 の API とそのころのスクリプトに基づいています。
 
