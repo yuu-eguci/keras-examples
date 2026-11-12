@@ -1,79 +1,59 @@
+"""1枚の画像に Keras のデータ拡張レイヤを繰り返しかけ、拡張の種類ごとに結果を並べて保存する。"""
+import argparse
 import os
-import glob
-import shutil
+
+import keras
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-from keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img
+from matplotlib.figure import Figure
 
-IMAGE_FILE = "../vgg16/elephant.jpg"
+DEFAULT_IMAGE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), os.pardir, "vgg16", "test_vgg16", "elephant.jpg")
 
-
-def draw_images(datagen, x, result_images):
-    # 出力先ディレクトリを作成
-    temp_dir = "temp"
-    os.mkdir(temp_dir)
-
-    # generatorから9個の画像を生成
-    # xは1サンプルのみなのでbatch_sizeは1で固定
-    g = datagen.flow(x, batch_size=1, save_to_dir=temp_dir, save_prefix='img', save_format='jpg')
-    for i in range(9):
-        batch = g.next()
-
-    # 生成した画像を3x3で描画
-    images = glob.glob(os.path.join(temp_dir, "*.jpg"))
-    fig = plt.figure()
-    gs = gridspec.GridSpec(3, 3)
-    gs.update(wspace=0.1, hspace=0.1)
-    for i in range(9):
-        img = load_img(images[i])
-        plt.subplot(gs[i])
-        plt.imshow(img, aspect='auto')
-        plt.axis("off")
-    plt.savefig(result_images)
-
-    # 出力先ディレクトリを削除
-    shutil.rmtree(temp_dir)
+layers = keras.layers
+# 拡張の名前と、そのレイヤを作る関数。画像の外側になった部分は端の画素で埋める
+AUGMENTATIONS = {
+    "rotation": lambda: layers.RandomRotation(0.25, fill_mode="nearest"),  # ±90度
+    "width_shift": lambda: layers.RandomTranslation(0, 0.2, fill_mode="nearest"),
+    "height_shift": lambda: layers.RandomTranslation(0.2, 0, fill_mode="nearest"),
+    "shear": lambda: layers.RandomShear(x_factor=1.0, fill_mode="nearest"),  # 最大約45度
+    "zoom": lambda: layers.RandomZoom(0.5, fill_mode="nearest"),
+    "horizontal_flip": lambda: layers.RandomFlip("horizontal"),
+    "vertical_flip": lambda: layers.RandomFlip("vertical"),
+}
 
 
-if __name__ == '__main__':
-    # 画像をロード（PIL形式画像）
-    img = load_img(IMAGE_FILE)
+def augment(image, layer, n=9):
+    """同じ画像を n 枚並べ、1枚ずつ独立にデータ拡張をかけた結果を返す。"""
+    batch = np.repeat(image[np.newaxis], n, axis=0)
+    return keras.ops.convert_to_numpy(layer(batch, training=True))
 
-    # numpy arrayに変換（row, col, channel)
-    x = img_to_array(img)
-    # print(x.shape)
 
-    # 4次元テンソルに変換（sample, row, col, channel)
-    x = np.expand_dims(x, axis=0)
-    # print(x.shape)
+def save_grid(images, path):
+    fig = Figure()
+    for i, image in enumerate(images):
+        ax = fig.add_subplot(3, 3, i + 1)
+        ax.imshow(np.clip(image, 0, 255).astype("uint8"), aspect="auto")
+        ax.axis("off")
+    fig.subplots_adjust(wspace=0.1, hspace=0.1)
+    fig.savefig(path)
 
-    datagen = ImageDataGenerator(rotation_range=90)
-    draw_images(datagen, x, "result_rotation.jpg")
 
-    datagen = ImageDataGenerator(width_shift_range=0.2)
-    draw_images(datagen, x, "result_width_shift.jpg")
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--image", default=os.path.normpath(DEFAULT_IMAGE))
+    parser.add_argument("--result-dir", default="result")
+    return parser.parse_args(argv)
 
-    datagen = ImageDataGenerator(height_shift_range=0.2)
-    draw_images(datagen, x, "result_height_shift.jpg")
 
-    datagen = ImageDataGenerator(shear_range=0.78)  # pi/4
-    draw_images(datagen, x, "result_shear.jpg")
+def main(argv=None):
+    args = parse_args(argv)
+    os.makedirs(args.result_dir, exist_ok=True)
 
-    datagen = ImageDataGenerator(zoom_range=0.5)
-    draw_images(datagen, x, "result_zoom.jpg")
+    image = keras.utils.img_to_array(keras.utils.load_img(args.image))
+    for name, make_layer in AUGMENTATIONS.items():
+        save_grid(augment(image, make_layer()),
+                  os.path.join(args.result_dir, "result_%s.jpg" % name))
 
-    datagen = ImageDataGenerator(channel_shift_range=100)
-    draw_images(datagen, x, "result_channel_shift.jpg")
 
-    datagen = ImageDataGenerator(horizontal_flip=True)
-    draw_images(datagen, x, "result_horizontal_flip.jpg")
-
-    datagen = ImageDataGenerator(vertical_flip=True)
-    draw_images(datagen, x, "result_vertical_flip.jpg")
-
-    datagen = ImageDataGenerator(samplewise_center=True)
-    draw_images(datagen, x, "result_samplewise_center.jpg")
-
-    datagen = ImageDataGenerator(samplewise_std_normalization=True)
-    draw_images(datagen, x, "result_samplewise_std_normalization.jpg")
+if __name__ == "__main__":
+    main()
