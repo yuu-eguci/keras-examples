@@ -132,4 +132,7 @@ def test_word_embedding_prints_vector_for_every_word(capsys):
     lines = [line for line in capsys.readouterr().out.splitlines() if ": [" in line]
     words = sorted({word for sentence in module.SENTENCES for word in sentence.split()})
     assert [line.split(":")[0] for line in lines] == words
-    assert all(len(line.split("[")[1].split()) == 3 for line in lines)
+    for line in lines:
+        values = line.split("[")[1].rstrip("]").split()
+        assert len(values) == 3
+        [float(value) for value in values]
