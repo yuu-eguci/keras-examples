@@ -138,7 +138,7 @@ DCGAN は1バッチごとに Discriminator と Generator を交互に更新し�
 
 ```bash
 cd vgg16/17flowers
-python setup.py  # jpg/ の画像を train_images/ と test_images/ にクラスごとに振り分ける
+../../.venv/bin/python setup.py  # jpg/ の画像を train_images/ と test_images/ にクラスごとに振り分ける
 ../../.venv/bin/python ../transfer_learning.py --method finetuning \
     --train-dir train_images --validation-dir test_images
 ../../.venv/bin/python ../predict.py --model results/model_finetuning.keras jpg/image_0001.jpg
@@ -164,7 +164,9 @@ python setup.py  # jpg/ の画像を train_images/ と test_images/ にクラス
 | `--name` | 出力ファイル名に使う名前（既定は学習方法の名前。`--preprocess vgg16` のときは末尾に `_with_preprocess` が付く） |
 | `--result-dir` | 結果の保存先ディレクトリ（既定は実行したディレクトリの `results`。なければ作成） |
 
-`smallcnn` / `finetuning` / `scratch` は、学習時に画像をランダムに左右反転・拡大縮小（±20%）・せん断（最大約11度）してデータを拡張します。全結合層は256ユニットの隠れ層（Dropout 0.5）とクラス数ぶんの出力（softmax）です。
+`smallcnn` / `finetuning` / `scratch` は、学習時に画像をランダムに左右反転・拡大縮小（±20%）・せん断（最大約11度）してデータを拡張します。VGG16 を使う3つの方法では、VGG16 の畳み込み部分の上に、256ユニットの隠れ層（Dropout 0.5）とクラス数ぶんの出力（softmax）を載せます。
+
+訓練用と検証用の画像はすべてメモリに読み込みます（150×150 の画像 2,800 枚で約 760 MB）。
 
 保存先ディレクトリに次のファイルを書き出します（`<名前>` は `--name` の値）。
 

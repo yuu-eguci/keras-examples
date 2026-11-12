@@ -211,3 +211,11 @@ def test_dogs_vs_cats_setup_splits_images(tmp_path, monkeypatch):
     for split, count in [("train", 1000), ("validation", 400)]:
         for name in ["dogs", "cats"]:
             assert len(list((tmp_path / "data" / split / name).iterdir())) == count
+
+
+def test_top_weights_is_only_for_finetuning():
+    module = load_example("vgg16/transfer_learning.py")
+
+    with pytest.raises(SystemExit):
+        module.parse_args(["--method", "extractor", "--train-dir", "t",
+                           "--validation-dir", "v", "--top-weights", "top.weights.h5"])
