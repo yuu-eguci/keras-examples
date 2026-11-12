@@ -43,16 +43,13 @@ def test_alphabet_model_predicts_at_every_position():
     assert model.output_shape == (None, None, 26)
 
 
-def test_alphabet_lstm_learns_the_whole_sequence():
-    module = load_example("lstm/alphabet_lstm.py")
-    keras.utils.set_random_seed(7)
-    x, y = module.make_dataset()
-    model = module.build_model()
-    model.compile(loss="sparse_categorical_crossentropy", optimizer="adam", metrics=["accuracy"])
+def test_alphabet_main_learns_the_whole_sequence_by_default(capsys):
+    load_example("lstm/alphabet_lstm.py").main([])
 
-    model.fit(x, y, epochs=2000, verbose=0)
-
-    assert module.predict_sequence(model, 0, 25) == list(range(26))
+    lines = capsys.readouterr().out.splitlines()
+    assert "Model accuracy (train data): 100.00%" in lines
+    start = lines.index("A -> B")
+    assert lines[start:start + 25] == ["%s -> %s" % (chr(65 + i), chr(66 + i)) for i in range(25)]
 
 
 def test_alphabet_main_prints_predicted_sequences(capsys):
@@ -84,6 +81,22 @@ def test_parse_stories_collects_story_before_each_question():
                      ["Sandra", "moved", "to", "the", "garden", "."]]
     assert question == ["Where", "is", "Daniel", "?"]
     assert answer == "hallway"
+    # 番号が1に戻ると新しいストーリーになる
+    assert data[2][0] == [["John", "moved", "to", "the", "kitchen", "."]]
+
+
+def test_vocabulary_reserves_index_zero_for_padding():
+    module = load_example("lstm/lstm_qa.py")
+    stories = [(["a", "b", "c"], ["where", "c"], "b"), (["c"], ["where", "a"], "a")]
+
+    word_index, vocab_size, story_maxlen, query_maxlen = module.build_vocabulary(stories)
+    x, xq, y = module.vectorize_stories(stories, word_index, story_maxlen, query_maxlen)
+
+    assert word_index == {"a": 1, "b": 2, "c": 3, "where": 4}
+    assert (vocab_size, story_maxlen, query_maxlen) == (5, 3, 2)
+    np.testing.assert_array_equal(x, [[1, 2, 3], [0, 0, 3]])
+    np.testing.assert_array_equal(xq, [[4, 3], [4, 1]])
+    np.testing.assert_array_equal(y, [2, 1])
 
 
 @pytest.fixture
@@ -119,6 +132,14 @@ def test_reuters_vectorizes_word_presence():
 
 def test_reuters_main_uses_top_words_and_reports_accuracy(monkeypatch, capsys):
     calls = []
+    fits = []
+    original_fit = keras.Model.fit
+
+    def recording_fit(self, *args, **kwargs):
+        fits.append(kwargs)
+        return original_fit(self, *args, **kwargs)
+
+    monkeypatch.setattr(keras.Model, "fit", recording_fit)
     rng = np.random.default_rng(0)
 
     def load_data(**kwargs):
@@ -132,6 +153,9 @@ def test_reuters_main_uses_top_words_and_reports_accuracy(monkeypatch, capsys):
     load_example("nlp/reuters.py").main(["--epochs", "1"])
 
     assert calls == [{"num_words": 1000, "test_split": 0.2}]
+    (kwargs,) = fits
+    assert kwargs["validation_split"] == 0.1
+    assert any(isinstance(cb, keras.callbacks.EarlyStopping) for cb in kwargs["callbacks"])
     assert "Test acc:" in capsys.readouterr().out
 
 

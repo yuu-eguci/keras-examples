@@ -51,6 +51,15 @@ def get_stories(filename):
             for story, question, answer in data]
 
 
+def build_vocabulary(stories):
+    """単語の番号（1から。0はパディング用）、語彙数、ストーリーと質問の最大長を返す。"""
+    vocab = sorted({w for story, query, answer in stories for w in story + query + [answer]})
+    word_index = {word: i + 1 for i, word in enumerate(vocab)}
+    story_maxlen = max(len(story) for story, _, _ in stories)
+    query_maxlen = max(len(query) for _, query, _ in stories)
+    return word_index, len(vocab) + 1, story_maxlen, query_maxlen
+
+
 def vectorize_stories(data, word_index, story_maxlen, query_maxlen):
     stories = [[word_index[w] for w in story] for story, _, _ in data]
     queries = [[word_index[w] for w in query] for _, query, _ in data]
@@ -88,13 +97,7 @@ def main(argv=None):
     print("# of train stories:", len(train_stories))
     print("# of test stories:", len(test_stories))
 
-    all_stories = train_stories + test_stories
-    vocab = sorted({w for story, query, answer in all_stories for w in story + query + [answer]})
-    # 番号0はパディング用に空けておく
-    word_index = {word: i + 1 for i, word in enumerate(vocab)}
-    vocab_size = len(vocab) + 1
-    story_maxlen = max(len(story) for story, _, _ in all_stories)
-    query_maxlen = max(len(query) for _, query, _ in all_stories)
+    word_index, vocab_size, story_maxlen, query_maxlen = build_vocabulary(train_stories + test_stories)
     print("vocab size:", vocab_size, "story maxlen:", story_maxlen, "query maxlen:", query_maxlen)
 
     x_train, xq_train, y_train = vectorize_stories(train_stories, word_index, story_maxlen, query_maxlen)
