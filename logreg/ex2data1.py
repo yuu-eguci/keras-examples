@@ -1,66 +1,73 @@
+"""2つの試験の点数から合否を予測する2クラスロジスティック回帰。"""
+import argparse
 import os
+
+import keras
 import numpy as np
-import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
-from sklearn import preprocessing
-
-from keras.models import Sequential
-from keras.layers.core import Dense, Activation
-
-"""2クラスロジスティック回帰"""
+DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "data", "ex2data1.txt")
 
 
-def plot_data(X, t):
+def load_data():
+    """各次元を平均0・分散1に標準化した点数 x と、合否のラベル t を返す。"""
+    data = np.genfromtxt(DATA_FILE, delimiter=",")
+    x = data[:, :2]
+    x = (x - x.mean(axis=0)) / x.std(axis=0)
+    return x, data[:, 2]
+
+
+def build_model():
+    return keras.Sequential([
+        keras.Input(shape=(2,)),
+        keras.layers.Dense(1, activation="sigmoid"),
+    ])
+
+
+def plot_data(ax, x, t):
     # ラベル1を正例、ラベル0を負例とする
-    positive = [i for i in range(len(t)) if t[i] == 1]
-    negative = [i for i in range(len(t)) if t[i] == 0]
+    ax.scatter(x[t == 1, 0], x[t == 1, 1], c="red", marker="o", label="positive")
+    ax.scatter(x[t == 0, 0], x[t == 0, 1], c="blue", marker="o", label="negative")
+    ax.set_xlabel("x1")
+    ax.set_ylabel("x2")
+    ax.legend()
 
-    plt.scatter(X[positive, 0], X[positive, 1], c='red', marker='o', label='positive')
-    plt.scatter(X[negative, 0], X[negative, 1], c='blue', marker='o', label='negative')
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--epochs", type=int, default=1000)
+    parser.add_argument("--result-dir", default="result")
+    return parser.parse_args(argv)
 
 
-if __name__ == '__main__':
+def main(argv=None):
+    args = parse_args(argv)
+    os.makedirs(args.result_dir, exist_ok=True)
     # 結果を再現できるように乱数の種を固定
-    seed = 1
-    np.random.seed(seed)
+    keras.utils.set_random_seed(1)
 
-    # 訓練データをロード
-    data = np.genfromtxt(os.path.join('..', 'data', 'ex2data1.txt'), delimiter=',')
-    X = data[:, (0, 1)]
-    t = data[:, 2]
+    x, t = load_data()
+    fig = Figure()
+    plot_data(fig.add_subplot(), x, t)
+    fig.savefig(os.path.join(args.result_dir, "data.png"))
 
-    # データの各次元が平均0、分散1になるように正規化
-    X = preprocessing.scale(X)
+    model = build_model()
+    model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
+    model.fit(x, t, epochs=args.epochs, batch_size=5)
 
-    # 訓練データをプロット
-    plt.figure(1)
-    plot_data(X, t)
+    # 決定境界 w1 * x1 + w2 * x2 + b = 0 を x2 について解いて描く
+    weights, bias = model.layers[0].get_weights()
+    w1, w2, b = weights[0, 0], weights[1, 0], bias[0]
+    fig = Figure()
+    ax = fig.add_subplot()
+    plot_data(ax, x, t)
+    xs = np.linspace(x[:, 0].min(), x[:, 0].max(), 100)
+    ax.plot(xs, -(w1 / w2) * xs - (b / w2), "b-", label="decision boundary")
+    ax.set_xlim(x[:, 0].min(), x[:, 0].max())
+    ax.set_ylim(x[:, 1].min(), x[:, 1].max())
+    ax.legend()
+    fig.savefig(os.path.join(args.result_dir, "result.png"))
 
-    # ロジスティック回帰モデルを構築
-    model = Sequential()
-    model.add(Dense(1, input_shape=(2, )))
-    model.add(Activation('sigmoid'))
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
-    # 訓練
-    model.fit(X, t, nb_epoch=1000, batch_size=5, verbose=1)
-
-    # 学習した重みを取得
-    weights = model.layers[0].get_weights()
-    w1 = weights[0][0, 0]
-    w2 = weights[0][1, 0]
-    b = weights[1][0]
-
-    # 決定境界を描画
-    plt.figure(1)
-    xmin, xmax = min(X[:, 0]), max(X[:, 0])
-    ymin, ymax = min(X[:, 1]), max(X[:, 1])
-    xs = np.linspace(xmin, xmax, 100)
-    ys = [- (w1 / w2) * x - (b / w2) for x in xs]
-    plt.plot(xs, ys, 'b-', label='decision boundary')
-    plt.xlabel('x1')
-    plt.ylabel('x2')
-    plt.xlim(xmin, xmax)
-    plt.ylim(ymin, ymax)
-    plt.legend()
-    plt.show()
+if __name__ == "__main__":
+    main()

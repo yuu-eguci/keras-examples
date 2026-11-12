@@ -1,52 +1,41 @@
-import numpy as np
+"""Iris のがく片と花弁の大きさから、アヤメの品種（3クラス）を多層パーセプトロンで分類する。"""
+import argparse
 
-from sklearn import datasets
+import keras
+from sklearn import datasets, preprocessing
 from sklearn.model_selection import train_test_split
 
-from keras.models import Sequential
-from keras.layers.core import Dense, Activation
-from keras.utils import np_utils
-from sklearn import preprocessing
+
+def build_model():
+    return keras.Sequential([
+        keras.Input(shape=(4,)),
+        keras.layers.Dense(16, activation="relu"),
+        keras.layers.Dense(3, activation="softmax"),
+    ])
 
 
-def build_multilayer_perceptron():
-    """多層パーセプトロンモデルを構築"""
-    model = Sequential()
-    model.add(Dense(16, input_shape=(4, )))
-    model.add(Activation('relu'))
-    model.add(Dense(3))
-    model.add(Activation('softmax'))
-    return model
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--epochs", type=int, default=50)
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+
+    iris = datasets.load_iris()
+    # 各特徴量を平均0・分散1に標準化し、8割を訓練データ、2割をテストデータにする
+    x = preprocessing.scale(iris.data)
+    train_x, test_x, train_y, test_y = train_test_split(x, iris.target, train_size=0.8)
+    print(train_x.shape, test_x.shape, train_y.shape, test_y.shape)
+
+    model = build_model()
+    model.compile(optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"])
+    model.fit(train_x, train_y, epochs=args.epochs, batch_size=1)
+
+    _, accuracy = model.evaluate(test_x, test_y, verbose=0)
+    print("Accuracy = {:.2f}".format(accuracy))
 
 
 if __name__ == "__main__":
-    # Irisデータをロード
-    iris = datasets.load_iris()
-    X = iris.data
-    Y = iris.target
-
-    # データの標準化
-    X = preprocessing.scale(X)
-
-    # ラベルをone-hot-encoding形式に変換
-    # 0 => [1, 0, 0]
-    # 1 => [0, 1, 0]
-    # 2 => [0, 0, 1]
-    Y = np_utils.to_categorical(Y)
-
-    # 訓練データとテストデータに分割
-    train_X, test_X, train_Y, test_Y = train_test_split(X, Y, train_size=0.8)
-    print(train_X.shape, test_X.shape, train_Y.shape, test_Y.shape)
-
-    # モデル構築
-    model = build_multilayer_perceptron()
-    model.compile(optimizer='adam',
-                  loss='categorical_crossentropy',
-                  metrics=['accuracy'])
-
-    # モデル訓練
-    model.fit(train_X, train_Y, nb_epoch=50, batch_size=1, verbose=1)
-
-    # モデル評価
-    loss, accuracy = model.evaluate(test_X, test_Y, verbose=0)
-    print("Accuracy = {:.2f}".format(accuracy))
+    main()
