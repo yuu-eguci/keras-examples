@@ -1,73 +1,52 @@
+"""CIFAR-10 の訓練画像に ZCA 白色化をかけ、白色化前後の画像を保存する。"""
+import argparse
+import os
+
+import keras
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy.misc import toimage
-from keras.datasets import cifar10
+from matplotlib.figure import Figure
+
+EPS = 1e-6
 
 
-def draw(X):
-    """Xは4次元テンソルの画像集合、最初の16枚の画像を描画する"""
-    assert X.shape[0] >= 16
-
-    plt.figure()
-    pos = 1
-    for i in range(16):
-        plt.subplot(4, 4, pos)
-        img = toimage(X[i])
-        plt.imshow(img)
-        plt.axis('off')
-        pos += 1
-    plt.show()
+def zca_whiten(x, eps=EPS):
+    """画像集合 x（先頭の軸が画像）に ZCA 白色化をかけ、同じ形状で返す。"""
+    # 1枚の画像を1本のベクトルとみなし、全画像の平均を引く
+    flat = x.reshape(len(x), -1)
+    flat = flat - flat.mean(axis=0)
+    # 共分散行列を固有値分解し、白色化行列 U diag(1/sqrt(S + eps)) U^T を作る
+    cov = flat.T @ flat / len(flat)
+    u, s, _ = np.linalg.svd(cov)
+    zca = (u / np.sqrt(s + eps)) @ u.T
+    return (flat @ zca.T).reshape(x.shape)
 
 
-# CIFAR10画像をロード（Xは4次元テンソル）
-# 訓練画像集合5万枚のみ対象とする、他は捨てる
-(X, _), (_, _) = cifar10.load_data()
-print(X.shape)
-# draw(X)
+def save_images(x, path):
+    """先頭16枚を、画像ごとに 0〜1 に正規化して4×4に並べて保存する。"""
+    fig = Figure()
+    for i, image in enumerate(x[:16]):
+        ax = fig.add_subplot(4, 4, i + 1)
+        ax.imshow((image - image.min()) / (image.max() - image.min()))
+        ax.axis("off")
+    fig.savefig(path)
 
-# 画像の枚数
-N = X.shape[0]
 
-# 画素値を0-1に正規化
-X = X / 255.0
-# 0-1に正規化しても同じように描画される
-# draw(X)
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--result-dir", default="result")
+    return parser.parse_args(argv)
 
-# 全画像の画素値の平均を引く
-X -= np.mean(X, axis=0)
-# 値が負になっても同じように描画される
-# draw(X)
 
-# 画像とチャネルを1次元の行列に変換
-# 1枚の画像が3072次元ベクトルとみなす
-# (50000, 3072 = 32*32*3)
-X = X.reshape(50000, -1)
-print(X.shape)
+def main(argv=None):
+    args = parse_args(argv)
+    os.makedirs(args.result_dir, exist_ok=True)
 
-# 共分散行列の固有値分解
-# C => (3072, 3072)
-# U => (3072, 3072)
-# lam => (3072, )
-# V => (3072, 3072)
-C = np.dot(X.T, X) / N
-U, S, V = np.linalg.svd(C)
+    (x, _), _ = keras.datasets.cifar10.load_data()
+    x = x.astype("float32") / 255.0
 
-# print("C:", C.shape)
-# print("U:", U.shape)
-# print("lam:", lam.shape)
-# print("V:", V.shape)
+    save_images(x, os.path.join(args.result_dir, "zca_whitening_before.png"))
+    save_images(zca_whiten(x), os.path.join(args.result_dir, "zca_whitening_after.png"))
 
-# ZCA白色化
-eps = 10e-7
-sqS = np.sqrt(S + eps)
-temp = np.dot(U, np.diag(1.0 / sqS))
-# Uzca => (3072, 3072)
-Uzca = np.dot(temp, U.T)
 
-# ZはZCA白色化適用後の画像
-# Z => (50000, 3072)
-Z = np.dot(X, Uzca.T)
-
-# 白色化した画像を描画
-Z = Z.reshape(50000, 32, 32, 3)
-draw(Z)
+if __name__ == "__main__":
+    main()
