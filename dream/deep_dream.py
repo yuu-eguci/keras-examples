@@ -1,166 +1,122 @@
-from keras.preprocessing.image import load_img, img_to_array
-import numpy as np
-from scipy.misc import imsave
-from scipy.optimize import fmin_l_bfgs_b
-import time
+"""ImageNet で学習済みの VGG16 の中間層の出力が大きくなるように画像を書き換える（DeepDream）。
+
+参考: https://github.com/keras-team/keras/blob/2.0.0/examples/deep_dream.py
+"""
 import argparse
 
-from keras.applications import vgg16
-from keras import backend as K
-from keras.layers import Input
-
-parser = argparse.ArgumentParser(description='Deep Dreams with Keras.')
-parser.add_argument('base_image_path', metavar='base', type=str,
-                    help='Path to the image to transform.')
-parser.add_argument('result_prefix', metavar='res_prefix', type=str,
-                    help='Prefix for the saved results.')
-
-args = parser.parse_args()
-base_image_path = args.base_image_path
-result_prefix = args.result_prefix
-
-# 生成される画像の解像度
-img_height, img_width = 600, 600
+import jax
+import jax.numpy as jnp
+import keras
+import numpy as np
+from PIL import Image
+from scipy.optimize import fmin_l_bfgs_b
 
 # 面白い結果が得られる設定
-saved_settings = {
-    'bad_trip': {'features': {'block4_conv1': 0.05,
-                              'block4_conv2': 0.01,
-                              'block4_conv3': 0.01},
-                 'continuity': 0.1,
-                 'dream_l2': 0.8,
-                 'jitter': 5},
-    'dreamy': {'features': {'block5_conv1': 0.05,
-                            'block5_conv2': 0.02},
-               'continuity': 0.1,
-               'dream_l2': 0.02,
-               'jitter': 0},
+SETTINGS = {
+    "bad_trip": {"features": {"block4_conv1": 0.05,
+                              "block4_conv2": 0.01,
+                              "block4_conv3": 0.01},
+                 "continuity": 0.1,
+                 "dream_l2": 0.8,
+                 "jitter": 5},
+    "dreamy": {"features": {"block5_conv1": 0.05,
+                            "block5_conv2": 0.02},
+               "continuity": 0.1,
+               "dream_l2": 0.02,
+               "jitter": 0},
 }
-
-settings = saved_settings['dreamy']
-print(settings)
-
-
-def preprocess_image(image_path):
-    img = load_img(image_path, target_size=(img_height, img_width))
-    img = img_to_array(img)
-    img = np.expand_dims(img, axis=0)
-    img = vgg16.preprocess_input(img)
-    return img
+# VGG16 の重みはもともと Caffe のもので、BGR の画像から平均画素を引いて学習されている
+MEAN_PIXEL_BGR = np.array([103.939, 116.779, 123.68])
 
 
-# VGG16の重みはもともとCaffeのものでBGRの画像で学習されている
+def preprocess_image(path, image_size):
+    image = keras.utils.load_img(path, target_size=(image_size, image_size))
+    x = keras.utils.img_to_array(image)[np.newaxis]
+    return keras.applications.vgg16.preprocess_input(x)
+
+
 def deprocess_image(x):
-    x = x.reshape((img_height, img_width, 3))
-
-    # VGG16で正規化された平均を足し込む
-    x[:, :, 0] += 103.939
-    x[:, :, 1] += 116.779
-    x[:, :, 2] += 123.68
-
-    # BGR => RGB
-    x = x[:, :, ::-1]
-    x = np.clip(x, 0, 255).astype('uint8')
-
-    return x
+    """preprocess_image の逆変換で uint8 の RGB 画像に戻す。"""
+    x = x.reshape(x.shape[-3:]) + MEAN_PIXEL_BGR
+    return np.clip(np.round(x[:, :, ::-1]), 0, 255).astype("uint8")
 
 
-img_size = (img_height, img_width, 3)
-
-# 生成画像を表す
-dream = Input(batch_shape=(1, ) + img_size)
-
-# VGG16をロード
-model = vgg16.VGG16(input_tensor=dream, weights='imagenet', include_top=False)
-print('Model loaded.')
-
-# 層の名前からオブジェクトへの辞書を作成
-layer_dict = dict([(layer.name, layer) for layer in model.layers])
+def build_model(image_size):
+    return keras.applications.VGG16(include_top=False, weights="imagenet",
+                                    input_shape=(image_size, image_size, 3))
 
 
-def continuity_loss(x):
-    assert K.ndim(x) == 4
-    a = K.square(x[:, :img_height - 1, :img_width - 1, :] - x[:, 1:, :img_width - 1, :])
-    b = K.square(x[:, :img_height - 1, :img_width - 1, :] - x[:, :img_height - 1, 1:, :])
-    return K.sum(K.pow(a + b, 1.25))
+def make_loss_and_grads(model, settings, image_size):
+    """平らにした画像から (損失, 勾配) を返す、L-BFGS に渡す関数を作る。"""
+    names = list(settings["features"])
+    feature = keras.Model(model.input, [model.get_layer(name).output for name in names])
+    trainable = [v.value for v in feature.trainable_variables]
+    non_trainable = [v.value for v in feature.non_trainable_variables]
+    shape = (1, image_size, image_size, 3)
+    size = np.prod(shape[1:])
+
+    # 重みは jit した関数の引数として渡す（クロージャで参照すると定数として埋め込まれる）
+    def loss_function(x, trainable, non_trainable):
+        outputs, _ = feature.stateless_call(trainable, non_trainable, x)
+        loss = 0.0
+        # 層の全フィルタの出力（端の2画素を除く）の二乗和を大きくしたいので、損失では引く
+        for name, output in zip(names, outputs):
+            _, height, width, _ = output.shape
+            loss -= (settings["features"][name]
+                     * jnp.sum(jnp.square(output[:, 2:height - 2, 2:width - 2, :]))
+                     / np.prod(output.shape[1:]))
+        # 隣り合う画素の差（continuity）と画素値の大きさ（L2）を罰して、画像が崩れすぎないようにする
+        a = jnp.square(x[:, :-1, :-1, :] - x[:, 1:, :-1, :])
+        b = jnp.square(x[:, :-1, :-1, :] - x[:, :-1, 1:, :])
+        loss += settings["continuity"] * jnp.sum((a + b) ** 1.25) / size
+        loss += settings["dream_l2"] * jnp.sum(jnp.square(x)) / size
+        return loss
+
+    value_and_grad = jax.jit(jax.value_and_grad(loss_function))
+
+    def loss_and_grads(x):
+        loss, grads = value_and_grad(jnp.asarray(x.reshape(shape), dtype="float32"),
+                                     trainable, non_trainable)
+        return float(loss), np.asarray(grads, dtype="float64").ravel()
+
+    return loss_and_grads
 
 
-# 損失を定義
-# 層の出力の最大
-loss = K.variable(0.0)
-for layer_name in settings['features']:
-    assert layer_name in layer_dict.keys(), 'Layer ' + layer_name + ' not found in model.'
-
-    coeff = settings['features'][layer_name]
-
-    # 層の出力
-    # 特定のフィルタだけでなく全フィルタ
-    x = layer_dict[layer_name].output
-    shape = layer_dict[layer_name].output_shape
-
-    # 層の出力の最大化を目指すので損失関数は負記号を付ける
-    # TODO: 画像のスライシングは何を意味する？層の出力のボーダーを避けるための工夫？
-    loss -= coeff * K.sum(K.square(x[:, 2:shape[1] - 2, 2:shape[2] - 2, :])) / np.prod(shape[1:])
-
-# lossは最小化を目指すので正則化項は+する
-# continuity loss
-loss += settings['continuity'] * continuity_loss(dream) / np.prod(img_size)
-
-# L2 norm
-loss += settings['dream_l2'] * K.sum(K.square(dream)) / np.prod(img_size)
-
-# 損失関数の入力画像に対する勾配
-grads = K.gradients(loss, dream)
-
-# 画像を入力して損失と勾配を返す関数
-# TODO: lossとgradsを返すK.functionをわければEvaluator不要では？
-f_loss = K.function([dream], [loss])
-f_grads = K.function([dream], [grads])
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("base_image_path", help="書き換える画像")
+    parser.add_argument("result_prefix", help="保存する画像のファイル名の接頭辞")
+    parser.add_argument("--setting", choices=SETTINGS, default="dreamy")
+    parser.add_argument("--iterations", type=int, default=10)
+    parser.add_argument("--image-size", type=int, default=600)
+    return parser.parse_args(argv)
 
 
-# scipyのBFGSには入力xをとるloss(x)とgrads(x)の関数を与える必要がある
-def loss(x):
-    """BFGSに与える損失関数"""
-    # BFGSのloss()への入力はフラット化されているので4Dテンソルに戻す
-    x = x.reshape((1, ) + img_size)
+def main(argv=None):
+    args = parse_args(argv)
+    if keras.backend.backend() != "jax":
+        raise SystemExit("このスクリプトは KERAS_BACKEND=jax で実行してください")
+    settings = SETTINGS[args.setting]
+    print(settings)
 
-    # loss(x)でlossだけでなくgradもまとめて計算して保存しておく
-    loss_value = f_loss([x])[0]
+    model = build_model(args.image_size)
+    loss_and_grads = make_loss_and_grads(model, settings, args.image_size)
 
-    return loss_value
+    rng = np.random.default_rng()
+    x = preprocess_image(args.base_image_path, args.image_size).astype("float64")
+    for i in range(args.iterations):
+        print("Start of iteration", i)
+        # 画像を少しずらしてから最適化し、あとで戻す
+        jitter = settings["jitter"] * 2 * (rng.random(x.shape) - 0.5)
+        x += jitter
+        x, min_val, _ = fmin_l_bfgs_b(loss_and_grads, x.ravel(), maxfun=7)
+        print("Current loss value:", min_val)
+        x = x.reshape((1, args.image_size, args.image_size, 3)) - jitter
+
+        filename = "%s_at_iteration_%d.png" % (args.result_prefix, i)
+        Image.fromarray(deprocess_image(x)).save(filename)
+        print("Image saved as", filename)
 
 
-def grads(x):
-    """BFGSに与える勾配関数"""
-    # BFGSのloss()への入力はフラット化されているので4Dテンソルに戻す
-    x = x.reshape((1, ) + img_size)
-
-    # loss(x)でlossだけでなくgradもまとめて計算して保存しておく
-    grad_values = f_grads([x])[0]
-
-    grad_values = grad_values.flatten().astype('float64')
-
-    return grad_values
-
-# BFGSで損失を最小化する入力画像を求める
-x = preprocess_image(base_image_path)
-for i in range(10):
-    print('Start of iteration', i)
-
-    random_jitter = (settings['jitter'] * 2) * (np.random.random(img_size) - 0.5)
-    x += random_jitter
-
-    # print("***", evaluator.loss(x))
-    # print("***", evaluator.grads(x).shape)
-    # print("***", x.flatten().shape)
-    x, min_val, info = fmin_l_bfgs_b(loss, x.flatten(), fprime=grads, maxfun=7)
-
-    print('Current loss value:', min_val)
-
-    # 画像に戻して保存
-    x = x.reshape(img_size)
-    x -= random_jitter
-    img = deprocess_image(np.copy(x))
-    fname = result_prefix + '_at_iteration_%d.png' % i
-    imsave(fname, img)
-    print('Image saved as', fname)
+if __name__ == "__main__":
+    main()

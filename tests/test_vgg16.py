@@ -17,24 +17,6 @@ def vgg16_dir_on_path(monkeypatch):
     monkeypatch.syspath_prepend(str(REPO_ROOT / "vgg16"))
 
 
-@pytest.fixture
-def no_pretrained_weights(monkeypatch):
-    """ImageNet の学習済み重みをダウンロードせず、ランダムな重みの VGG16 を使う。
-
-    スクリプトが要求した weights の値を記録したリストを返す。
-    """
-    original = keras.applications.VGG16
-    requested = []
-
-    def vgg16_without_download(*args, **kwargs):
-        requested.append(kwargs.get("weights", "imagenet"))
-        kwargs["weights"] = None
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(keras.applications, "VGG16", vgg16_without_download)
-    return requested
-
-
 def write_images(directory, per_class, rng):
     for name in CLASSES:
         (directory / name).mkdir(parents=True)

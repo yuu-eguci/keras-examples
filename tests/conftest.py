@@ -49,3 +49,21 @@ def fake_cifar10(monkeypatch):
         return (x_train, y_train), (x_test, y_test)
 
     monkeypatch.setattr(keras.datasets.cifar10, "load_data", load_data)
+
+
+@pytest.fixture
+def no_pretrained_weights(monkeypatch):
+    """ImageNet の学習済み重みをダウンロードせず、ランダムな重みの VGG16 を使う。
+
+    スクリプトが要求した weights の値を記録したリストを返す。
+    """
+    original = keras.applications.VGG16
+    requested = []
+
+    def vgg16_without_download(*args, **kwargs):
+        requested.append(kwargs.get("weights", "imagenet"))
+        kwargs["weights"] = None
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(keras.applications, "VGG16", vgg16_without_download)
+    return requested

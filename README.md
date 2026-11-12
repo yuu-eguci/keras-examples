@@ -188,6 +188,34 @@ cd vgg16/17flowers
 
 ImageNet で学習済みの VGG16 の重みは、初回実行時に `~/.keras/models/` へダウンロードされます（`include_top` なしで約 60 MB、`test_vgg16.py` が使う全結合層付きで約 550 MB）。
 
+### CNN の可視化
+
+どちらも ImageNet で学習済みの VGG16 を使い、入力画像に対する勾配を JAX で計算するため、`KERAS_BACKEND=jax` でのみ動きます。`dream/results/` には実行結果の例があります。
+
+`dream/visualize_vgg16.py --layer <層の名前>` は、指定した層からランダムに選んだ16個のフィルタについて、そのフィルタの出力の平均を最大化する画像を勾配法（RMSprop）で求め、4×4に並べて保存します。画像の Lp ノルムと Total Variation による正則化をかけます。`--layer predictions` を指定すると、ソフトマックスをかける前の各クラスのスコアを最大化し、画像にクラス名を表示します。層の名前は `model.summary()` で表示される名前で、たとえば `block1_conv1`〜`block5_conv3`、`fc1`、`fc2`、`predictions` です。存在しない名前（または入力層）を指定すると、選べる層の一覧を表示して終了します。
+
+```bash
+.venv/bin/python dream/visualize_vgg16.py --layer block5_conv1 --iterations 200
+```
+
+| オプション | 意味 |
+| --- | --- |
+| `--layer` | 可視化する層の名前（必須） |
+| `--iterations` | 勾配法の反復回数（既定は1000） |
+| `--output` | 保存先（既定は `result.png`） |
+
+`dream/deep_dream.py <画像> <出力の接頭辞>` は、画像の縦横を `--image-size` に拡大・縮小し（縦横比は保たない）、VGG16 の中間層の出力が大きくなるように L-BFGS で画像を少しずつ書き換えます（DeepDream）。反復ごとに `<出力の接頭辞>_at_iteration_<反復の番号（0から）>.png` を保存します。
+
+```bash
+.venv/bin/python dream/deep_dream.py dream/results/sky.jpg sky --setting bad_trip
+```
+
+| オプション | 意味 |
+| --- | --- |
+| `--setting` | `dreamy`（既定。block5_conv1・block5_conv2 を強める）または `bad_trip`（block4_conv1〜block4_conv3 を強める） |
+| `--iterations` | 反復回数（既定は10） |
+| `--image-size` | 画像の縦横のサイズ（既定は600） |
+
 ### 表形式データの分類と回帰
 
 | スクリプト | 内容 | 既定のエポック数 |
