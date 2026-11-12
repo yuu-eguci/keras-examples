@@ -22,9 +22,12 @@ class VGG16Preprocess(keras.layers.Layer):
 
 
 def load_images(directory, image_size):
-    """サブディレクトリ名（名前順）をクラスとして画像を読み込み、(画像, ラベル, クラス名) を返す。"""
+    """サブディレクトリ名（名前順）をクラスとして画像を読み込み、(画像, ラベル, クラス名) を返す。
+
+    "." で始まる隠しディレクトリはクラスとみなさない。
+    """
     classes = sorted(name for name in os.listdir(directory)
-                     if os.path.isdir(os.path.join(directory, name)))
+                     if not name.startswith(".") and os.path.isdir(os.path.join(directory, name)))
     images, labels = [], []
     for label, name in enumerate(classes):
         class_dir = os.path.join(directory, name)

@@ -134,7 +134,7 @@ DCGAN は1バッチごとに Discriminator と Generator を交互に更新し�
 .venv/bin/python vgg16/test_vgg16/test_vgg16.py vgg16/test_vgg16/elephant.jpg
 ```
 
-`vgg16/transfer_learning.py` は、クラスごとのサブディレクトリに画像を置いた訓練用と検証用のディレクトリから画像分類モデルを学習します。クラスはサブディレクトリ名（名前順）です。
+`vgg16/transfer_learning.py` は、クラスごとのサブディレクトリに画像を置いた訓練用と検証用のディレクトリから画像分類モデルを学習します。クラスはサブディレクトリ名（名前順。`.` で始まる隠しディレクトリは除く）です。
 
 ```bash
 cd vgg16/17flowers
@@ -172,10 +172,17 @@ cd vgg16/17flowers
 
 | ファイル | 内容 |
 | --- | --- |
-| `history_<名前>.txt` | エポックごとの `loss` / `acc` / `val_loss` / `val_acc`（タブ区切り。`17flowers/` と `dogs_vs_cats/` の `plot_results.py` が `results/` から読み込み、学習方法どうしの検証損失・検証精度を比較するグラフにする） |
+| `history_<名前>.txt` | エポックごとの `loss` / `acc` / `val_loss` / `val_acc`（タブ区切り） |
 | `model_<名前>.keras` | 前処理を含む学習済みモデル |
-| `classes.txt` | クラス名（1行に1クラス、出力の順） |
+| `classes.txt` | クラス名（1行に1クラス、モデルの出力の順） |
 | `top_<名前>.weights.h5` | `extractor` のみ。学習した全結合層の重み（`--top-weights` に渡せる） |
+
+`vgg16/17flowers/plot_results.py` と `vgg16/dogs_vs_cats/plot_results.py` は、実行したディレクトリの `results/` にある次の学習履歴を読み込み、学習方法ごとの検証損失と検証精度を比較するグラフを `results/val_loss.png` / `results/val_acc.png` に保存します。
+
+| スクリプト | 読み込む学習履歴（作り方） |
+| --- | --- |
+| `17flowers/plot_results.py` | `history_smallcnn.txt`（`--method smallcnn`）、`history_finetuning.txt`（`--method finetuning`） |
+| `dogs_vs_cats/plot_results.py` | `history_smallcnn.txt`（`--method smallcnn`）、`history_extractor.txt`（`--method extractor`）、`history_finetuning.txt`（`--method finetuning --top-weights results/top_extractor.weights.h5`）、`history_finetuning_from_random.txt`（`--method finetuning --name finetuning_from_random`） |
 
 `vgg16/predict.py --model <モデル> <画像>...` は、モデルと同じディレクトリの `classes.txt` を読み、画像ごとに確率の高い最大5クラスを表示します。前処理はモデルに含まれているため、学習時と同じ前処理が自動でかかります。
 

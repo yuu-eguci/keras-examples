@@ -19,14 +19,20 @@ def vgg16_dir_on_path(monkeypatch):
 
 @pytest.fixture
 def no_pretrained_weights(monkeypatch):
-    """ImageNet の学習済み重みをダウンロードせず、ランダムな重みの VGG16 を使う。"""
+    """ImageNet の学習済み重みをダウンロードせず、ランダムな重みの VGG16 を使う。
+
+    スクリプトが要求した weights の値を記録したリストを返す。
+    """
     original = keras.applications.VGG16
+    requested = []
 
     def vgg16_without_download(*args, **kwargs):
+        requested.append(kwargs.get("weights", "imagenet"))
         kwargs["weights"] = None
         return original(*args, **kwargs)
 
     monkeypatch.setattr(keras.applications, "VGG16", vgg16_without_download)
+    return requested
 
 
 def write_images(directory, per_class, rng):
@@ -72,6 +78,15 @@ def test_load_images_uses_sorted_subdirectories_as_classes(image_dirs):
     assert classes == CLASSES
     assert x.shape == (12, 32, 32, 3)
     assert sorted(y.tolist()) == [0] * 4 + [1] * 4 + [2] * 4
+
+
+def test_load_images_skips_hidden_directories(image_dirs):
+    module = load_example("vgg16/transfer_learning.py")
+    (image_dirs[0] / ".ipynb_checkpoints").mkdir()
+
+    _, _, classes = module.load_images(image_dirs[0], 32)
+
+    assert classes == CLASSES
 
 
 def test_vgg16_preprocess_layer_matches_keras_applications():
@@ -219,3 +234,49 @@ def test_top_weights_is_only_for_finetuning():
     with pytest.raises(SystemExit):
         module.parse_args(["--method", "extractor", "--train-dir", "t",
                            "--validation-dir", "v", "--top-weights", "top.weights.h5"])
+
+
+@pytest.mark.parametrize("method, weights, optimizer", [
+    ("smallcnn", [], "adam"),
+    ("extractor", ["imagenet"], "sgd"),
+    ("finetuning", ["imagenet"], "sgd"),
+    ("scratch", [None], "adam"),
+])
+def test_method_uses_documented_weights_and_optimizer(
+        method, weights, optimizer, image_dirs, no_pretrained_weights, monkeypatch, tmp_path):
+    compiled = []
+    original_compile = keras.Model.compile
+
+    def recording_compile(self, *args, **kwargs):
+        compiled.append(kwargs["optimizer"])
+        return original_compile(self, *args, **kwargs)
+
+    monkeypatch.setattr(keras.Model, "compile", recording_compile)
+
+    train(*image_dirs, tmp_path, "--method", method)
+
+    assert no_pretrained_weights == weights
+    (used,) = compiled
+    if optimizer == "adam":
+        assert used == "adam"
+    else:
+        assert isinstance(used, keras.optimizers.SGD)
+        assert float(used.learning_rate) == pytest.approx(1e-4)
+        assert used.momentum == pytest.approx(0.9)
+
+
+@pytest.mark.parametrize("dataset, names", [
+    ("17flowers", ["smallcnn", "finetuning"]),
+    ("dogs_vs_cats", ["smallcnn", "extractor", "finetuning", "finetuning_from_random"]),
+])
+def test_plot_results_compares_documented_histories(dataset, names, tmp_path, monkeypatch):
+    (tmp_path / "results").mkdir()
+    for name in names:
+        (tmp_path / "results" / f"history_{name}.txt").write_text(
+            "epoch\tloss\tacc\tval_loss\tval_acc\n0\t1.0\t0.5\t1.1\t0.4\n")
+    monkeypatch.chdir(tmp_path)
+
+    runpy.run_path(str(REPO_ROOT / "vgg16" / dataset / "plot_results.py"))
+
+    for image in ["val_loss.png", "val_acc.png"]:
+        assert (tmp_path / "results" / image).read_bytes().startswith(b"\x89PNG")
