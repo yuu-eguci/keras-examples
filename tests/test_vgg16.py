@@ -1,3 +1,5 @@
+import runpy
+
 import keras
 import numpy as np
 import pytest
@@ -153,3 +155,59 @@ def test_imagenet_prediction_prints_top5(no_pretrained_weights, monkeypatch, cap
         [str(REPO_ROOT / "vgg16/test_vgg16/elephant.jpg")])
 
     assert capsys.readouterr().out.count("class") == 5
+
+
+@pytest.mark.parametrize("method", METHODS)
+def test_augmentation_is_used_only_while_training(method, image_dirs, no_pretrained_weights, tmp_path):
+    module = load_example("vgg16/transfer_learning.py")
+    wrapped = []
+    original = module.with_augmentation
+
+    def recording_with_augmentation(model):
+        trainer = original(model)
+        wrapped.append({type(layer).__name__ for layer in trainer.layers})
+        return trainer
+
+    module.with_augmentation = recording_with_augmentation
+    module.main(["--train-dir", str(image_dirs[0]), "--validation-dir", str(image_dirs[1]),
+                 "--epochs", "1", "--image-size", "32", "--result-dir", str(tmp_path),
+                 "--method", method])
+
+    if method == "extractor":
+        assert wrapped == []
+    else:
+        (layer_types,) = wrapped
+        assert {"RandomFlip", "RandomZoom", "RandomShear"} <= layer_types
+    saved = keras.models.load_model(tmp_path / f"model_{method}.keras")
+    assert not any(type(layer).__name__.startswith("Random") for layer in saved.layers)
+
+
+def test_17flowers_setup_splits_images_by_class(tmp_path, monkeypatch):
+    labels = (REPO_ROOT / "vgg16/17flowers/labels.txt").read_text()
+    (tmp_path / "labels.txt").write_text(labels)
+    (tmp_path / "jpg").mkdir()
+    for i in range(1, 1361):
+        (tmp_path / "jpg" / f"image_{i:04d}.jpg").touch()
+    monkeypatch.chdir(tmp_path)
+
+    runpy.run_path(str(REPO_ROOT / "vgg16/17flowers/setup.py"))
+
+    classes = [line.split()[2] for line in labels.splitlines()]
+    assert sorted(p.name for p in (tmp_path / "train_images").iterdir()) == sorted(classes)
+    for name in classes:
+        assert len(list((tmp_path / "train_images" / name).iterdir())) == 70
+        assert len(list((tmp_path / "test_images" / name).iterdir())) == 10
+
+
+def test_dogs_vs_cats_setup_splits_images(tmp_path, monkeypatch):
+    (tmp_path / "train").mkdir()
+    for animal in ["dog", "cat"]:
+        for i in range(1, 1401):
+            (tmp_path / "train" / f"{animal}.{i}.jpg").touch()
+    monkeypatch.chdir(tmp_path)
+
+    runpy.run_path(str(REPO_ROOT / "vgg16/dogs_vs_cats/setup.py"))
+
+    for split, count in [("train", 1000), ("validation", 400)]:
+        for name in ["dogs", "cats"]:
+            assert len(list((tmp_path / "data" / split / name).iterdir())) == count

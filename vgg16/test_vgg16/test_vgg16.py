@@ -1,38 +1,31 @@
-from keras.applications.vgg16 import VGG16, preprocess_input, decode_predictions
-from keras.preprocessing import image
+"""ImageNet で学習済みの VGG16 で画像を分類し、確率の高い5クラスを表示する。"""
+import argparse
+
+import keras
 import numpy as np
-import sys
 
-"""
-ImageNetで学習済みのVGG16モデルを使って入力画像のクラスを予測する
-"""
 
-if len(sys.argv) != 2:
-    print("usage: python test_vgg16.py [image file]")
-    sys.exit(1)
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("image")
+    return parser.parse_args(argv)
 
-filename = sys.argv[1]
 
-# 学習済みのVGG16をロード
-# 構造とともに学習済みの重みも読み込まれる
-model = VGG16(weights='imagenet')
-# model.summary()
+def main(argv=None):
+    args = parse_args(argv)
 
-# 引数で指定した画像ファイルを読み込む
-# サイズはVGG16のデフォルトである224x224にリサイズされる
-img = image.load_img(filename, target_size=(224, 224))
+    # 全結合層を含む VGG16 と学習済みの重みを読み込む
+    model = keras.applications.VGG16(weights="imagenet")
 
-# 読み込んだPIL形式の画像をarrayに変換
-x = image.img_to_array(img)
+    # VGG16 の入力サイズ 224x224 にそろえ、(1, 縦, 横, チャネル) の4次元テンソルにする
+    image = keras.utils.load_img(args.image, target_size=(224, 224))
+    x = keras.utils.img_to_array(image)[np.newaxis]
 
-# 3次元テンソル（rows, cols, channels) を
-# 4次元テンソル (samples, rows, cols, channels) に変換
-# 入力画像は1枚なのでsamples=1でよい
-x = np.expand_dims(x, axis=0)
+    preds = model.predict(keras.applications.vgg16.preprocess_input(x))
+    # 1000クラスの番号を ImageNet のクラス名に変換する
+    for result in keras.applications.vgg16.decode_predictions(preds, top=5)[0]:
+        print(result)
 
-# Top-5のクラスを予測する
-# VGG16の1000クラスはdecode_predictions()で文字列に変換される
-preds = model.predict(preprocess_input(x))
-results = decode_predictions(preds, top=5)[0]
-for result in results:
-    print(result)
+
+if __name__ == "__main__":
+    main()
