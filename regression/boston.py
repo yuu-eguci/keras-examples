@@ -2,8 +2,8 @@
 import argparse
 
 import keras
-from sklearn.model_selection import KFold, cross_val_score
-from sklearn.pipeline import Pipeline
+import numpy as np
+from sklearn.model_selection import KFold
 from sklearn.preprocessing import StandardScaler
 
 # モデルの名前と隠れ層のユニット数
@@ -23,13 +23,21 @@ def build_model(name):
     return model
 
 
-def build_pipeline(name, standardize, epochs):
-    """（必要なら）標準化してから回帰する scikit-learn のパイプラインを作る。"""
-    regressor = keras.wrappers.SKLearnRegressor(
-        model=lambda X, y: build_model(name),
-        fit_kwargs={"epochs": epochs, "batch_size": 5, "verbose": 0})
-    steps = [("standardize", StandardScaler())] if standardize else []
-    return Pipeline(steps + [("regression", regressor)])
+def cross_validate(x, y, name, standardize, epochs, folds):
+    """分割ごとに新しいモデルを学習し、検証側の MSE を並べた配列を返す。
+
+    標準化するときは、その分割の訓練側だけから平均と標準偏差を求める。
+    """
+    mses = []
+    for train, test in KFold(n_splits=folds).split(x):
+        x_train, x_test = x[train], x[test]
+        if standardize:
+            scaler = StandardScaler().fit(x_train)
+            x_train, x_test = scaler.transform(x_train), scaler.transform(x_test)
+        model = build_model(name)
+        model.fit(x_train, y[train], epochs=epochs, batch_size=5, verbose=0)
+        mses.append(model.evaluate(x_test, y[test], verbose=0))
+    return np.array(mses)
 
 
 def parse_args(argv):
@@ -47,10 +55,8 @@ def main(argv=None):
     # 全506件を交差検証に使う
     (x, y), _ = keras.datasets.boston_housing.load_data(test_split=0)
 
-    pipeline = build_pipeline(args.model, args.standardize, args.epochs)
-    scores = cross_val_score(pipeline, x, y, cv=KFold(n_splits=args.folds),
-                             scoring="neg_mean_squared_error")
-    print("MSE: %.2f (%.2f)" % (-scores.mean(), scores.std()))
+    mses = cross_validate(x, y, args.model, args.standardize, args.epochs, args.folds)
+    print("MSE: %.2f (%.2f)" % (mses.mean(), mses.std()))
 
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 import keras
 import numpy as np
 import pytest
-from sklearn.preprocessing import StandardScaler
 
 from conftest import load_example
 
@@ -84,14 +83,6 @@ def test_boston_models(name, units):
     assert dense_units(model) == units
 
 
-@pytest.mark.parametrize("standardize", [True, False])
-def test_boston_pipeline_standardizes_unless_disabled(standardize):
-    pipeline = load_example("regression/boston.py").build_pipeline("baseline", standardize, 1)
-
-    has_scaler = any(isinstance(step, StandardScaler) for _, step in pipeline.steps)
-    assert has_scaler == standardize
-
-
 @pytest.fixture
 def fake_boston_housing(monkeypatch):
     calls = []
@@ -111,4 +102,39 @@ def test_boston_main_cross_validates_on_all_samples(fake_boston_housing, capsys)
     load_example("regression/boston.py").main(["--epochs", "1", "--folds", "2"])
 
     assert fake_boston_housing == [{"test_split": 0}]
-    assert "MSE: " in capsys.readouterr().out
+    # 交差検証中は進捗バーを出さず、正の MSE を1行だけ表示する
+    (line,) = capsys.readouterr().out.splitlines()
+    assert line.startswith("MSE: ")
+    assert float(line.split()[1]) > 0
+
+
+@pytest.mark.parametrize("standardize", [True, False])
+def test_boston_trains_each_fold_with_given_settings(standardize, monkeypatch):
+    module = load_example("regression/boston.py")
+    rng = np.random.default_rng(0)
+    x = rng.normal(50, 10, size=(12, 13))
+    y = rng.normal(20, 5, size=12)
+    fits = []
+    original_fit = keras.Model.fit
+
+    def recording_fit(self, x_fold, y_fold, **kwargs):
+        fits.append((x_fold, kwargs))
+        return original_fit(self, x_fold, y_fold, **kwargs)
+
+    monkeypatch.setattr(keras.Model, "fit", recording_fit)
+
+    mses = module.cross_validate(x, y, "baseline", standardize, epochs=2, folds=3)
+
+    assert mses.shape == (3,)
+    assert (mses > 0).all()
+    assert len(fits) == 3
+    for x_fold, kwargs in fits:
+        assert kwargs["epochs"] == 2
+        assert kwargs["batch_size"] == 5
+        assert len(x_fold) == 8
+        # 標準化するときは、その分割の訓練データだけから求めた平均・標準偏差で標準化する
+        if standardize:
+            np.testing.assert_allclose(x_fold.mean(axis=0), 0.0, atol=1e-6)
+            np.testing.assert_allclose(x_fold.std(axis=0), 1.0, atol=1e-6)
+        else:
+            assert x_fold.mean() > 40

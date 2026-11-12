@@ -195,7 +195,7 @@ ImageNet で学習済みの VGG16 の重みは、初回実行時に `~/.keras/mo
 | `logreg/ex2data1.py` | `data/ex2data1.txt`（2つの試験の点数と合否）をロジスティック回帰で分類し、決定境界を描く | 1000 |
 | `mlp/pima.py` | `data/pima-indians-diabetes.data`（Pima Indians Diabetes）の糖尿病の有無を多層パーセプトロンで分類 | 150 |
 | `mlp/iris.py` | scikit-learn 付属の Iris を多層パーセプトロンで3クラスに分類（8割で学習、2割で評価） | 50 |
-| `regression/boston.py` | Boston Housing の住宅価格を回帰し、10分割交差検証の平均二乗誤差（MSE）を表示 | 50 |
+| `regression/boston.py` | Boston Housing の住宅価格を回帰し、10分割交差検証での平均二乗誤差（MSE）の平均と標準偏差を表示 | 50 |
 
 どれも `--epochs` で学習エポック数を指定できます。データファイルはスクリプトの場所から探すので、どのディレクトリから実行してもかまいません。
 
@@ -206,7 +206,7 @@ ImageNet で学習済みの VGG16 の重みは、初回実行時に `~/.keras/mo
 | スクリプト | オプション | 意味 |
 | --- | --- | --- |
 | `logreg/ex2data1.py` | `--result-dir` | 結果の保存先ディレクトリ（既定は実行したディレクトリの `result`。なければ作成）。標準化した訓練データの散布図を `data.png`、決定境界を重ねた図を `result.png` に保存する |
-| `mlp/pima.py` | `--checkpoint-dir` | 指定すると、データの3分の1を検証データにし、検証精度が最高を更新するたびに重みを `weights-improvement-<エポック>-<検証精度>.weights.h5` としてこのディレクトリに保存する |
+| `mlp/pima.py` | `--checkpoint-dir` | 指定すると、データの3分の1を検証データにし、検証精度の最高値を更新するたびに重みを `weights-improvement-<エポック>-<検証精度>.weights.h5` としてこのディレクトリに保存する |
 | `regression/boston.py` | `--model` | `baseline`（既定。隠れ層13ユニット）、`deeper`（隠れ層13・6ユニット）、`wider`（隠れ層20ユニット） |
 | `regression/boston.py` | `--no-standardize` | 入力を標準化しない（既定では交差検証の各分割で訓練データから平均と標準偏差を求めて標準化する） |
 | `regression/boston.py` | `--folds` | 交差検証の分割数（既定は10） |
