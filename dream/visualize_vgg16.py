@@ -38,7 +38,8 @@ def objective_and_grads(model, layer_name):
     trainable = [v.value for v in feature.trainable_variables]
     non_trainable = [v.value for v in feature.non_trainable_variables]
 
-    def objective(x, filter_index):
+    # 重みは jit した関数の引数として渡す（クロージャで参照すると定数として埋め込まれ、メモリを倍近く使う）
+    def objective(x, filter_index, trainable, non_trainable):
         output, _ = feature.stateless_call(trainable, non_trainable, x)
         # 指定したフィルタ（predictions 層ならクラス）の出力の平均を大きくしたい
         value = jnp.mean(jnp.take(output, filter_index, axis=-1))
@@ -50,7 +51,8 @@ def objective_and_grads(model, layer_name):
         tv = jnp.sum((a + b) ** (TV_BETA / 2.0))
         return value - LP_WEIGHT * lp / size - TV_WEIGHT * tv / size
 
-    return jax.jit(jax.value_and_grad(objective))
+    value_and_grad = jax.jit(jax.value_and_grad(objective))
+    return lambda x, filter_index: value_and_grad(x, filter_index, trainable, non_trainable)
 
 
 def deprocess_image(x):
@@ -91,9 +93,10 @@ def main(argv=None):
         raise SystemExit("このスクリプトは KERAS_BACKEND=jax で実行してください")
 
     model = build_model()
-    layer_names = [layer.name for layer in model.layers]
+    # 入力層を除くすべての層を選べる
+    layer_names = [layer.name for layer in model.layers[1:]]
     if args.layer not in layer_names:
-        raise SystemExit("層 %s はありません。選べる層: %s" % (args.layer, ", ".join(layer_names[1:])))
+        raise SystemExit("層 %s はありません。選べる層: %s" % (args.layer, ", ".join(layer_names)))
     num_filters = model.get_layer(args.layer).output.shape[-1]
     names = class_names() if args.layer == "predictions" else None
 

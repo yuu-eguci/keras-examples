@@ -55,7 +55,8 @@ def make_loss_and_grads(model, settings, image_size):
     shape = (1, image_size, image_size, 3)
     size = np.prod(shape[1:])
 
-    def loss_function(x):
+    # 重みは jit した関数の引数として渡す（クロージャで参照すると定数として埋め込まれる）
+    def loss_function(x, trainable, non_trainable):
         outputs, _ = feature.stateless_call(trainable, non_trainable, x)
         loss = 0.0
         # 層の全フィルタの出力（端の2画素を除く）の二乗和を大きくしたいので、損失では引く
@@ -74,7 +75,8 @@ def make_loss_and_grads(model, settings, image_size):
     value_and_grad = jax.jit(jax.value_and_grad(loss_function))
 
     def loss_and_grads(x):
-        loss, grads = value_and_grad(jnp.asarray(x.reshape(shape), dtype="float32"))
+        loss, grads = value_and_grad(jnp.asarray(x.reshape(shape), dtype="float32"),
+                                     trainable, non_trainable)
         return float(loss), np.asarray(grads, dtype="float64").ravel()
 
     return loss_and_grads
