@@ -36,6 +36,10 @@ def test_zca_whitening_decorrelates_pixels():
     flat = z.reshape(len(z), -1)
     np.testing.assert_allclose(flat.mean(axis=0), 0.0, atol=1e-6)
     np.testing.assert_allclose(flat.T @ flat / len(flat), np.eye(12), atol=1e-3)
+    # ZCA の変換行列は対称（PCA 白色化と違い、元の画素の並びを保つ）
+    centered = x.reshape(len(x), -1) - x.reshape(len(x), -1).mean(axis=0)
+    transform, *_ = np.linalg.lstsq(centered, flat, rcond=None)
+    np.testing.assert_allclose(transform, transform.T, atol=1e-6)
 
 
 def test_zca_whitening_main_saves_before_and_after(fake_cifar10, tmp_path):
