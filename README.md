@@ -246,13 +246,13 @@ ImageNet で学習済みの VGG16 の重みは、初回実行時に `~/.keras/mo
 | スクリプト | 内容 | 既定のエポック数 |
 | --- | --- | --- |
 | `lstm/alphabet_lstm.py` | アルファベット全体を1つの系列として LSTM に入力し、各位置で次の文字を予測する。学習後に、A から予測した文字を次々につなげた結果と、途中の K から始めた5文字分の予測（それまでの文脈がないとうまく予測できない）を表示する | 2000 |
-| `lstm/lstm_qa.py` | bAbI の質問応答タスクで、ストーリーと質問をそれぞれ LSTM で符号化して足し合わせ、答えの単語を予測する | 40 |
+| `lstm/lstm_qa.py` | bAbI の質問応答タスクで、ストーリーと質問をそれぞれ LSTM で符号化して足し合わせ、答えの単語を予測する。学習後にテストデータでの損失と精度を表示する | 40 |
 | `nlp/reuters.py` | Reuters のニュースを、よく出る1,000語の有無を表すベクトルにして、多層パーセプトロンで46のトピックに分類する（検証データは訓練データの10%。検証損失が改善しなくなった時点で終了） | 100 |
 | `word2vec/word_embedding.py` | 「sam is red」のような8つの短い文から色が green かどうかを学習し、単語ごとの3次元の埋め込みベクトルを表示する | 5000 |
 
 どれも `--epochs` で学習エポック数を指定できます。
 
-`lstm/lstm_qa.py` は bAbI のデータ（[tasks_1-20_v1-2.tar.gz](https://s3.amazonaws.com/text-datasets/babi_tasks_1-20_v1-2.tar.gz)）を展開したディレクトリを読みます。
+`lstm/lstm_qa.py` は bAbI のデータ（[babi_tasks_1-20_v1-2.tar.gz](https://s3.amazonaws.com/text-datasets/babi_tasks_1-20_v1-2.tar.gz)。展開すると `tasks_1-20_v1-2/` ができる）を読みます。
 
 ```bash
 .venv/bin/python lstm/lstm_qa.py --data-dir tasks_1-20_v1-2
