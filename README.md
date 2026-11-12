@@ -15,7 +15,7 @@ export KERAS_BACKEND=jax
 
 ## Keras 3 で動作確認済みの例
 
-データセット（MNIST / CIFAR-10）は初回実行時に `~/.keras/datasets/` へダウンロードされます。
+データセット（MNIST / CIFAR-10 / Boston Housing）は初回実行時に `~/.keras/datasets/` へダウンロードされます。
 
 ### 画像分類
 
@@ -187,6 +187,31 @@ cd vgg16/17flowers
 `vgg16/predict.py --model <モデル> <画像>...` は、モデルと同じディレクトリの `classes.txt` を読み、画像ごとに確率の高い最大5クラスを表示します。前処理はモデルに含まれているため、学習時と同じ前処理が自動でかかります。
 
 ImageNet で学習済みの VGG16 の重みは、初回実行時に `~/.keras/models/` へダウンロードされます（`include_top` なしで約 60 MB、`test_vgg16.py` が使う全結合層付きで約 550 MB）。
+
+### 表形式データの分類と回帰
+
+| スクリプト | 内容 | 既定のエポック数 |
+| --- | --- | --- |
+| `logreg/ex2data1.py` | `data/ex2data1.txt`（2つの試験の点数と合否）をロジスティック回帰で分類し、決定境界を描く | 1000 |
+| `mlp/pima.py` | `data/pima-indians-diabetes.data`（Pima Indians Diabetes）の糖尿病の有無を多層パーセプトロンで分類 | 150 |
+| `mlp/iris.py` | scikit-learn 付属の Iris を多層パーセプトロンで3クラスに分類（8割で学習、2割で評価） | 50 |
+| `regression/boston.py` | Boston Housing の住宅価格を回帰し、10分割交差検証の平均二乗誤差（MSE）を表示 | 50 |
+
+どれも `--epochs` で学習エポック数を指定できます。データファイルはスクリプトの場所から探すので、どのディレクトリから実行してもかまいません。
+
+```bash
+.venv/bin/python regression/boston.py --model deeper
+```
+
+| スクリプト | オプション | 意味 |
+| --- | --- | --- |
+| `logreg/ex2data1.py` | `--result-dir` | 結果の保存先ディレクトリ（既定は実行したディレクトリの `result`。なければ作成）。標準化した訓練データの散布図を `data.png`、決定境界を重ねた図を `result.png` に保存する |
+| `mlp/pima.py` | `--checkpoint-dir` | 指定すると、データの3分の1を検証データにし、検証精度が最高を更新するたびに重みを `weights-improvement-<エポック>-<検証精度>.weights.h5` としてこのディレクトリに保存する |
+| `regression/boston.py` | `--model` | `baseline`（既定。隠れ層13ユニット）、`deeper`（隠れ層13・6ユニット）、`wider`（隠れ層20ユニット） |
+| `regression/boston.py` | `--no-standardize` | 入力を標準化しない（既定では交差検証の各分割で訓練データから平均と標準偏差を求めて標準化する） |
+| `regression/boston.py` | `--folds` | 交差検証の分割数（既定は10） |
+
+`mlp/pima.py` は学習後に、学習に使ったデータ全体での精度を表示します。
 
 ### そのほか
 

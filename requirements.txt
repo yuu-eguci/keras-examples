@@ -3,3 +3,4 @@ jax[cpu]>=0.12
 matplotlib>=3.10
 pillow>=11
 pytest>=9
+scikit-learn>=1.6
